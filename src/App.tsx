@@ -2,29 +2,83 @@ import { useState, useEffect } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { readDir, readFile, watchImmediate } from '@tauri-apps/plugin-fs'
 import { openPath } from '@tauri-apps/plugin-opener'
-import { ingestScreenshot, searchScreenshots } from './lib/ingest'
+import { ingestScreenshot, searchScreenshots, suggestFolder } from './lib/ingest'
+import { getFolders, createFolder, assignFolder, getScreenshotsByFolder } from './lib/folders'
+import { Sidebar } from './components/Sidebar'
+import { DetailPanel } from './components/DetailPanel'
+import { Toast } from './components/Toast'
 
-interface Result {
+interface Screenshot {
   id: string
   filename: string
   file_path: string
+  storage_path: string
   description: string
-  similarity: number
+  notes?: string
+  folder_id?: string
+  similarity?: number
+}
+
+interface Folder {
+  id: string
+  name: string
+  color: string
+}
+
+interface ToastData {
+  message: string
+  subtitle?: string
+  actions?: { label: string; onClick: () => void; primary?: boolean }[]
 }
 
 function App() {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Result[]>([])
+  const [results, setResults] = useState<Screenshot[]>([])
+  const [allScreenshots, setAllScreenshots] = useState<Screenshot[]>([])
+  const [folders, setFolders] = useState<Folder[]>([])
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
+  const [selectedScreenshot, setSelectedScreenshot] = useState<Screenshot | null>(null)
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
   const [imageSrcs, setImageSrcs] = useState<Record<string, string>>({})
+  const [toast, setToast] = useState<ToastData | null>(null)
+  const [fullscreenSrc, setFullscreenSrc] = useState<string | null>(null)
+  const [isSearchMode, setIsSearchMode] = useState(false)
   const [inboxFolder, setInboxFolder] = useState<string | null>(
     localStorage.getItem('inboxFolder')
   )
 
   useEffect(() => {
+    loadFolders()
+    loadScreenshots(null)
     if (inboxFolder) startWatching(inboxFolder)
   }, [])
+
+  async function loadFolders() {
+    try {
+      const data = await getFolders()
+      setFolders(data || [])
+    } catch (e) {
+      console.error('Failed to load folders:', e)
+    }
+  }
+
+  async function loadScreenshots(folderId: string | null) {
+    try {
+      const data = await getScreenshotsByFolder(folderId)
+      setAllScreenshots(data || [])
+    } catch (e) {
+      console.error('Failed to load screenshots:', e)
+    }
+  }
+
+  async function handleFolderSelect(folderId: string | null) {
+    setSelectedFolder(folderId)
+    setIsSearchMode(false)
+    setQuery('')
+    setResults([])
+    loadScreenshots(folderId)
+  }
 
   async function setupInbox() {
     const folder = await open({ directory: true })
@@ -39,8 +93,43 @@ function App() {
       for (const path of event.paths) {
         if (path.match(/\.(png|jpg|jpeg)$/i)) {
           try {
-            await ingestScreenshot(path)
-            setStatus(`Auto-ingested: ${path.split('/').pop()}`)
+            const result = await ingestScreenshot(path)
+            if (result.skipped) return
+
+            const folderNames = folders.map(f => f.name)
+            const suggested = await suggestFolder(result.description || '', folderNames)
+
+            setToast({
+              message: `New screenshot ingested`,
+              subtitle: `Suggested folder: "${suggested}" — move it there?`,
+              actions: [
+                {
+                  label: 'Yes, move it',
+                  primary: true,
+                  onClick: async () => {
+                    let targetFolder = folders.find(f =>
+                      f.name.toLowerCase() === suggested.toLowerCase()
+                    )
+                    if (!targetFolder) {
+                      targetFolder = await createFolder(suggested)
+                      await loadFolders()
+                    }
+                    if (result.id) {
+                      await assignFolder(result.id, targetFolder.id)
+                      loadScreenshots(selectedFolder)
+                    }
+                    setToast(null)
+                  }
+                },
+                {
+                  label: 'Skip',
+                  onClick: () => {
+                    setToast(null)
+                    loadScreenshots(selectedFolder)
+                  }
+                }
+              ]
+            })
           } catch (e) {
             console.error('Auto-ingest failed:', e)
           }
@@ -82,11 +171,13 @@ function App() {
     }
     setStatus(`Done! ${done} new screenshots ingested.`)
     setLoading(false)
+    loadScreenshots(selectedFolder)
   }
 
   async function handleSearch() {
     if (!query.trim()) return
     setLoading(true)
+    setIsSearchMode(true)
     setStatus('Searching...')
     try {
       const data = await searchScreenshots(query)
@@ -98,197 +189,204 @@ function App() {
     setLoading(false)
   }
 
-  return (
-    <div style={{ 
-      padding: '24px', 
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      maxWidth: '720px', 
-      margin: '0 auto',
-      minHeight: '100vh',
-      background: '#fff'
-    }}>
+  const displayedScreenshots = isSearchMode ? results : allScreenshots
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ 
-            width: '28px', height: '28px', 
-            background: '#534AB7', borderRadius: '6px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="2" width="5" height="5" rx="1" fill="white"/>
-              <rect x="9" y="2" width="5" height="5" rx="1" fill="white" opacity="0.6"/>
-              <rect x="2" y="9" width="5" height="5" rx="1" fill="white" opacity="0.6"/>
-              <rect x="9" y="9" width="5" height="5" rx="1" fill="white"/>
+  return (
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'white' }}>
+
+      {/* Sidebar */}
+      <Sidebar
+        folders={folders}
+        selectedFolder={selectedFolder}
+        onSelectFolder={handleFolderSelect}
+        onFoldersChange={loadFolders}
+      />
+
+      {/* Main content */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Top bar */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '12px',
+          padding: '12px 20px', borderBottom: '0.5px solid #e8e8e8',
+          flexShrink: 0
+        }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{
+              position: 'absolute', left: '10px', top: '50%',
+              transform: 'translateY(-50%)', opacity: 0.4, pointerEvents: 'none'
+            }}>
+              <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M11 11l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Search screenshots..."
+              style={{
+                width: '100%', padding: '8px 12px 8px 32px',
+                fontSize: '13px', border: '0.5px solid #e0e0e0',
+                borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#333'
+              }}
+            />
           </div>
-          <span style={{ fontSize: '16px', fontWeight: '500' }}>Screenlabel</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button onClick={handleSearch} disabled={loading} style={{
+            background: '#534AB7', color: 'white', border: 'none',
+            borderRadius: '7px', padding: '7px 16px', fontSize: '13px', cursor: 'pointer'
+          }}>
+            {loading ? '...' : 'Search'}
+          </button>
+          <button onClick={handleIngest} disabled={loading} style={{
+            background: 'white', color: '#555', border: '0.5px solid #ddd',
+            borderRadius: '7px', padding: '7px 14px', fontSize: '13px', cursor: 'pointer'
+          }}>
+            + Ingest
+          </button>
+          {!inboxFolder && (
+            <button onClick={setupInbox} style={{
+              background: '#EEEDFE', color: '#534AB7', border: 'none',
+              borderRadius: '7px', padding: '7px 14px', fontSize: '13px', cursor: 'pointer'
+            }}>
+              Set up inbox
+            </button>
+          )}
           {inboxFolder && (
-            <div style={{ 
+            <div style={{
               display: 'flex', alignItems: 'center', gap: '6px',
-              fontSize: '12px', color: '#666',
-              background: '#f5f5f5', padding: '4px 10px',
-              borderRadius: '20px', border: '0.5px solid #e0e0e0'
+              fontSize: '12px', color: '#666', background: '#f5f5f5',
+              padding: '4px 10px', borderRadius: '20px', border: '0.5px solid #e0e0e0',
+              flexShrink: 0
             }}>
               <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#1D9E75' }}/>
-              Watching inbox
+              Watching
             </div>
           )}
-          <button onClick={handleIngest} disabled={loading} style={{
-            fontSize: '12px', padding: '5px 12px',
-            border: '0.5px solid #ddd', borderRadius: '6px',
-            background: 'white', cursor: 'pointer', color: '#333'
-          }}>
-            + Ingest folder
-          </button>
         </div>
-      </div>
 
-      {/* Onboarding */}
-      {!inboxFolder && (
-        <div style={{ 
-          marginBottom: '20px', padding: '16px',
-          background: '#EEEDFE', borderRadius: '10px',
-          border: '0.5px solid #AFA9EC'
-        }}>
-          <p style={{ margin: '0 0 4px', fontWeight: '500', fontSize: '14px', color: '#3C3489' }}>
-            Set up your Screenlabel inbox
-          </p>
-          <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#534AB7' }}>
-            Pick a folder to watch — anything you drop in gets auto-indexed.
-          </p>
-          <button onClick={setupInbox} style={{
-            fontSize: '13px', padding: '6px 14px',
-            background: '#534AB7', color: 'white',
-            border: 'none', borderRadius: '6px', cursor: 'pointer'
-          }}>
-            Choose inbox folder
-          </button>
-        </div>
-      )}
+        {/* Status */}
+        {status && (
+          <div style={{ padding: '8px 20px', fontSize: '12px', color: '#999', flexShrink: 0 }}>
+            {status}
+          </div>
+        )}
 
-      {/* Search */}
-      <div style={{ position: 'relative', marginBottom: '16px' }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ 
-          position: 'absolute', left: '12px', top: '50%', 
-          transform: 'translateY(-50%)', opacity: 0.4, pointerEvents: 'none'
-        }}>
-          <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.5"/>
-          <path d="M11 11l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSearch()}
-          placeholder="Search your screenshots..."
-          style={{ 
-            width: '100%', padding: '10px 100px 10px 36px',
-            fontSize: '14px', border: '0.5px solid #ddd',
-            borderRadius: '8px', outline: 'none', boxSizing: 'border-box',
-            color: '#333'
-          }}
-        />
-        <button onClick={handleSearch} disabled={loading} style={{
-          position: 'absolute', right: '6px', top: '50%',
-          transform: 'translateY(-50%)',
-          background: '#534AB7', color: 'white',
-          border: 'none', borderRadius: '6px',
-          padding: '5px 14px', fontSize: '13px', cursor: 'pointer'
-        }}>
-          {loading ? '...' : 'Search'}
-        </button>
-      </div>
-
-      {/* Status */}
-      {status && (
-        <p style={{ fontSize: '12px', color: '#999', marginBottom: '12px' }}>{status}</p>
-      )}
-
-      {/* Results */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {results.map(r => {
-          loadImage(r.file_path)
-          return (
-            <div key={r.id}
-              onClick={() => openPath(r.file_path)}
-              style={{
-                display: 'flex', gap: '0',
-                border: '0.5px solid #e8e8e8',
-                borderRadius: '10px', overflow: 'hidden',
-                cursor: 'pointer', background: 'white',
-                transition: 'border-color 0.15s'
-              }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#534AB7')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = '#e8e8e8')}
-            >
-              <div style={{ 
-                width: '100px', flexShrink: 0,
-                background: '#f0f0f0',
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                {imageSrcs[r.file_path] ? (
-                  <img
-                    src={imageSrcs[r.file_path]}
-                    style={{ width: '100px', height: '100%', objectFit: 'cover', alignSelf: 'stretch', display: 'block' }}
-                  />
-                ) : (
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" opacity="0.3">
-                    <rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-                    <circle cx="7" cy="7.5" r="1.5" fill="currentColor"/>
-                    <path d="M2 13l5-4 3 3 3-2 5 4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                  </svg>
-                )}
-              </div>
-              <div style={{ padding: '12px 14px', flex: 1, minWidth: 0 }}>
-                <div style={{ 
-                  fontSize: '13px', fontWeight: '500', 
-                  color: '#111', marginBottom: '4px',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                }}>
-                  {r.filename}
-                </div>
-                <div style={{ 
-                  fontSize: '12px', color: '#666', lineHeight: '1.5',
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
-                }}>
-                  {r.description}
-                </div>
-                <div style={{ marginTop: '8px' }}>
-                  <span style={{ 
-                    fontSize: '11px', background: '#EEEDFE', 
-                    color: '#534AB7', padding: '2px 8px', borderRadius: '10px'
-                  }}>
-                    {Math.round(r.similarity * 100)}% match
-                  </span>
-                </div>
-              </div>
+        {/* Grid */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+          {displayedScreenshots.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#ccc' }}>
+              <div style={{ fontSize: '32px', marginBottom: '12px' }}>🖼</div>
+              <p style={{ fontSize: '14px', margin: 0 }}>
+                {isSearchMode ? 'No results found' : 'No screenshots yet — ingest a folder to get started'}
+              </p>
             </div>
-          )
-        })}
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+              gap: '12px'
+            }}>
+              {displayedScreenshots.map(s => {
+                const filePath = s.file_path || s.storage_path
+                loadImage(filePath)
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => setSelectedScreenshot(s)}
+                    style={{
+                      border: selectedScreenshot?.id === s.id ? '2px solid #534AB7' : '0.5px solid #e8e8e8',
+                      borderRadius: '8px', overflow: 'hidden', cursor: 'pointer',
+                      background: 'white', transition: 'border-color 0.1s'
+                    }}
+                    onMouseEnter={e => {
+                      if (selectedScreenshot?.id !== s.id)
+                        e.currentTarget.style.borderColor = '#bbb'
+                    }}
+                    onMouseLeave={e => {
+                      if (selectedScreenshot?.id !== s.id)
+                        e.currentTarget.style.borderColor = '#e8e8e8'
+                    }}
+                  >
+                    <div style={{ height: '110px', background: '#f5f5f5', overflow: 'hidden' }}>
+                      {imageSrcs[filePath] ? (
+                        <img
+                          src={imageSrcs[filePath]}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" opacity="0.2">
+                            <rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                            <circle cx="7" cy="7.5" r="1.5" fill="currentColor"/>
+                            <path d="M2 13l5-4 3 3 3-2 5 4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ padding: '8px' }}>
+                      <p style={{
+                        fontSize: '11px', color: '#333', margin: '0 0 2px',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        fontWeight: '500'
+                      }}>
+                        {s.filename}
+                      </p>
+                      {s.similarity !== undefined && (
+                        <span style={{
+                          fontSize: '10px', background: '#EEEDFE',
+                          color: '#534AB7', padding: '1px 6px', borderRadius: '8px'
+                        }}>
+                          {Math.round(s.similarity * 100)}% match
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Footer */}
-      {inboxFolder && (
-        <div style={{ 
-          marginTop: '24px', paddingTop: '16px',
-          borderTop: '0.5px solid #f0f0f0',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-        }}>
-          <span style={{ fontSize: '11px', color: '#bbb' }}>
-            {inboxFolder}
-          </span>
-          <button onClick={setupInbox} style={{
-            fontSize: '11px', color: '#999', background: 'none',
-            border: 'none', cursor: 'pointer', padding: '0'
-          }}>
-            change folder
-          </button>
-        </div>
+      {/* Detail panel */}
+      {selectedScreenshot && (
+        <DetailPanel
+          screenshot={selectedScreenshot}
+          folders={folders}
+          imageSrc={imageSrcs[selectedScreenshot.file_path || selectedScreenshot.storage_path]}
+          onClose={() => setSelectedScreenshot(null)}
+          onUpdate={() => loadScreenshots(selectedFolder)}
+          onOpenFullscreen={(src) => setFullscreenSrc(src)}
+        />
       )}
+
+      {/* Toast */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          subtitle={toast.subtitle}
+          actions={toast.actions}
+          onDismiss={() => setToast(null)}
+        />
+      )}
+
+      {/* Fullscreen modal */}
+      {fullscreenSrc && (
+      <div
+      onClick={() => setFullscreenSrc(null)}
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.85)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 2000, cursor: 'zoom-out'
+      }}
+    >
+      <img
+        src={fullscreenSrc}
+        style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '8px', objectFit: 'contain' }}
+      />
+    </div>
+  )}
     </div>
   )
 }

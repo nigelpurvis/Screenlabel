@@ -87,3 +87,21 @@ export async function searchScreenshots(query: string) {
   if (error) throw error
   return data
 }
+
+export async function suggestFolder(description: string, existingFolders: string[]): Promise<string> {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    max_tokens: 100,
+    messages: [{
+      role: 'user',
+      content: `Given this screenshot description and list of existing folders, suggest the best folder name. If none fit, suggest a new short folder name (1-2 words). Reply with ONLY the folder name, nothing else.
+
+Description: ${description}
+
+Existing folders: ${existingFolders.length > 0 ? existingFolders.join(', ') : 'none yet'}
+
+Folder suggestion:`
+    }]
+  })
+  return response.choices[0].message.content?.trim() || 'Uncategorized'
+}
