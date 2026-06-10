@@ -161,25 +161,45 @@ function App() {
     if (!hasApiKey()) { setShowSettings(true); return }
     const folder = await open({ directory: true })
     if (!folder) return
-    setStatus('Scanning folder...')
+    setStatus('Scanning folder…')
     setLoading(true)
-    const entries = await readDir(folder as string)
+
+    const dir = folder as string
+    const entries = await readDir(dir)
     const images = entries.filter(e => e.name?.match(/\.(png|jpg|jpeg)$/i))
-    setStatus(`Found ${images.length} screenshots. Ingesting...`)
+    const total = images.length
+
     let done = 0
-    for (const img of images) {
-      const filePath = `${folder}/${img.name}`
-      try {
-        const result = await ingestScreenshot(filePath)
-        if (!result.skipped) done++
-        setStatus(`Ingested ${done}/${images.length}: ${img.name}`)
-      } catch (e) {
-        console.error('Failed:', img.name, e)
+    let failed = 0
+    let firstError = ''
+    let cursor = 0
+
+    // Process a few at a time — 65 sequential GPT-4o calls would take minutes.
+    async function worker() {
+      while (cursor < images.length) {
+        const img = images[cursor++]
+        try {
+          const result = await ingestScreenshot(`${dir}/${img.name}`)
+          if (!result.skipped) done++
+        } catch (e) {
+          failed++
+          if (!firstError) firstError = String(e)
+          console.error('Failed:', img.name, e)
+        }
+        setStatus(`Ingesting ${done + failed}/${total}…${failed ? ` — ${failed} failed` : ''}`)
+        if ((done + failed) % 4 === 0) loadScreenshots(selectedFolder)
       }
     }
-    setStatus(`Done! ${done} new screenshots ingested.`)
+
+    await Promise.all(Array.from({ length: 4 }, () => worker()))
+
     setLoading(false)
     loadScreenshots(selectedFolder)
+    setStatus(
+      failed > 0
+        ? `Done — ${done} ingested, ${failed} failed. ${firstError}`
+        : `Done! ${done} screenshot${done === 1 ? '' : 's'} ingested.`
+    )
   }
 
   async function handleSearch() {

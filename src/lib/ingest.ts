@@ -21,16 +21,28 @@ export async function ingestScreenshot(filePath: string) {
 
   const ai = getProvider()
   const existing = await readSidecar(filePath)
+  const fm = existing?.frontmatter ?? {}
 
-  const bytes = await readFile(filePath)
-  const base64 = toBase64(bytes)
+  // If the sidecar already has an AI description, reuse it and skip the costly
+  // GPT-4o Vision call — we only recompute the (cheap) embedding to rebuild the
+  // index. This makes re-indexing from existing .md files nearly free and fast.
+  let description: string
+  let text: string
+  if (typeof fm.description === 'string' && fm.description.trim()) {
+    description = fm.description
+    text = typeof fm.text === 'string' ? fm.text : ''
+  } else {
+    const bytes = await readFile(filePath)
+    const base64 = toBase64(bytes)
+    const result = await ai.describe(base64)
+    description = result.description
+    text = result.text
+  }
 
-  const { description, text } = await ai.describe(base64)
   const embedding = await ai.embed(`${description} ${text}`)
 
   const now = new Date().toISOString()
   const filename = filePath.split('/').pop() ?? filePath
-  const fm = existing?.frontmatter ?? {}
 
   // Re-ingesting a screenshot that already has a sidecar preserves its id,
   // tags, folder, notes, and original created date.

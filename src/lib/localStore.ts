@@ -25,6 +25,9 @@ export interface IndexEntry {
 let entries: IndexEntry[] = []
 let indexFile = ''
 let loaded = false
+// Serializes writes so concurrent ingests can't corrupt index.json by writing
+// to the same file at once. Each persist() waits for the previous to finish.
+let writeChain: Promise<void> = Promise.resolve()
 
 export async function initStore(): Promise<void> {
   if (loaded) return
@@ -44,7 +47,10 @@ export async function initStore(): Promise<void> {
 }
 
 async function persist(): Promise<void> {
-  await writeTextFile(indexFile, JSON.stringify(entries))
+  writeChain = writeChain
+    .catch(() => {})
+    .then(() => writeTextFile(indexFile, JSON.stringify(entries)))
+  return writeChain
 }
 
 export function allEntries(): IndexEntry[] {
