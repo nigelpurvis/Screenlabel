@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { readDir, readFile, watchImmediate } from '@tauri-apps/plugin-fs'
-import { openPath } from '@tauri-apps/plugin-opener'
 import { ingestScreenshot, searchScreenshots, suggestFolder } from './lib/ingest'
 import { getFolders, createFolder, assignFolder, getScreenshotsByFolder } from './lib/folders'
+import { initStore } from './lib/localStore'
+import { hasApiKey } from './lib/settings'
 import { Sidebar } from './components/Sidebar'
 import { DetailPanel } from './components/DetailPanel'
 import { Toast } from './components/Toast'
+import { SettingsModal } from './components/SettingsModal'
 
 interface Screenshot {
   id: string
@@ -47,11 +49,16 @@ function App() {
   const [inboxFolder, setInboxFolder] = useState<string | null>(
     localStorage.getItem('inboxFolder')
   )
+  const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
-    loadFolders()
-    loadScreenshots(null)
-    if (inboxFolder) startWatching(inboxFolder)
+    (async () => {
+      await initStore()
+      if (!hasApiKey()) setShowSettings(true)
+      await loadFolders()
+      await loadScreenshots(null)
+      if (inboxFolder) startWatching(inboxFolder)
+    })()
   }, [])
 
   async function loadFolders() {
@@ -151,6 +158,7 @@ function App() {
   }
 
   async function handleIngest() {
+    if (!hasApiKey()) { setShowSettings(true); return }
     const folder = await open({ directory: true })
     if (!folder) return
     setStatus('Scanning folder...')
@@ -176,6 +184,7 @@ function App() {
 
   async function handleSearch() {
     if (!query.trim()) return
+    if (!hasApiKey()) { setShowSettings(true); return }
     setLoading(true)
     setIsSearchMode(true)
     setStatus('Searching...')
@@ -242,6 +251,12 @@ function App() {
             borderRadius: '7px', padding: '7px 14px', fontSize: '13px', cursor: 'pointer'
           }}>
             + Ingest
+          </button>
+          <button onClick={() => setShowSettings(true)} title="Settings" style={{
+            background: 'white', color: '#555', border: '0.5px solid #ddd',
+            borderRadius: '7px', padding: '7px 10px', fontSize: '13px', cursor: 'pointer'
+          }}>
+            ⚙
           </button>
           {!inboxFolder && (
             <button onClick={setupInbox} style={{
@@ -369,6 +384,9 @@ function App() {
           onDismiss={() => setToast(null)}
         />
       )}
+
+      {/* Settings */}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
       {/* Fullscreen modal */}
       {fullscreenSrc && (

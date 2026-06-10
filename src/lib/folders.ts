@@ -1,61 +1,58 @@
-import { supabase } from './supabase'
+import * as store from './localStore'
+import { readSidecar, writeSidecar } from './vault'
 
-export async function getFolders() {
-  const { data, error } = await supabase
-    .from('folders')
-    .select('*')
-    .order('name')
-  if (error) throw error
-  return data
+// Folder/notes operations. These keep the exact signatures the UI was already
+// calling when this was backed by Supabase — only the implementation changed,
+// so App.tsx, Sidebar, and DetailPanel didn't have to.
+
+export async function getFolders(): Promise<store.FolderRec[]> {
+  return store.loadFolders()
 }
 
-export async function createFolder(name: string, color?: string) {
-  const { data, error } = await supabase
-    .from('folders')
-    .insert({ name, color: color || '#534AB7' })
-    .select()
-    .single()
-  if (error) throw error
-  return data
+export async function createFolder(name: string, color?: string): Promise<store.FolderRec> {
+  return store.addFolder(name, color)
 }
 
-export async function deleteFolder(id: string) {
-  const { error } = await supabase
-    .from('folders')
-    .delete()
-    .eq('id', id)
-  if (error) throw error
+export async function deleteFolder(id: string): Promise<void> {
+  store.removeFolder(id)
 }
 
-export async function assignFolder(screenshotId: string, folderId: string | null) {
-  const { error } = await supabase
-    .from('screenshots')
-    .update({ folder_id: folderId })
-    .eq('id', screenshotId)
-  if (error) throw error
+export async function assignFolder(screenshotId: string, folderId: string | null): Promise<void> {
+  const folderName = folderId ? (store.folderById(folderId)?.name ?? null) : null
+  const entry = await store.updateEntry(screenshotId, { folder: folderName })
+  if (entry) await syncSidecar(entry)
 }
 
-export async function saveNotes(screenshotId: string, notes: string) {
-  const { error } = await supabase
-    .from('screenshots')
-    .update({ notes })
-    .eq('id', screenshotId)
-  if (error) throw error
+export async function saveNotes(screenshotId: string, notes: string): Promise<void> {
+  const entry = await store.updateEntry(screenshotId, { notes })
+  if (entry) await syncSidecar(entry)
 }
 
-export async function getScreenshotsByFolder(folderId: string | null) {
-  const query = supabase
-    .from('screenshots')
-    .select('*')
-    .order('created_at', { ascending: false })
+export async function getScreenshotsByFolder(
+  folderId: string | null,
+): Promise<store.ScreenshotView[]> {
+  const wantedName = folderId ? (store.folderById(folderId)?.name ?? null) : null
+  return store
+    .allEntries()
+    .filter((e) => (folderId === null ? true : e.folder === wantedName))
+    .sort((a, b) => (b.ingested || '').localeCompare(a.ingested || ''))
+    .map(store.toScreenshot)
+}
 
-  if (folderId === null) {
-    const { data, error } = await query
-    if (error) throw error
-    return data
-  } else {
-    const { data, error } = await query.eq('folder_id', folderId)
-    if (error) throw error
-    return data
+// Whenever metadata or notes change, mirror them back into the sidecar .md so
+// the file on disk stays the source of truth.
+async function syncSidecar(entry: store.IndexEntry): Promise<void> {
+  const existing = await readSidecar(entry.path)
+  const frontmatter = {
+    ...(existing?.frontmatter ?? {}),
+    id: entry.id,
+    file: entry.file,
+    tags: entry.tags,
+    folder: entry.folder,
+    description: entry.description,
+    text: entry.text,
+    created: entry.created,
+    ingested: entry.ingested,
   }
+  await writeSidecar(entry.path, frontmatter, entry.notes || '')
 }

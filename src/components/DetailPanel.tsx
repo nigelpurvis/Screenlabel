@@ -23,17 +23,20 @@ interface Props {
   imageSrc?: string
   onClose: () => void
   onUpdate: () => void
+  onOpenFullscreen: (src: string) => void
 }
 
-export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate }: Props) {
+export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, onOpenFullscreen }: Props) {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [selectedFolder, setSelectedFolder] = useState<string>('')
 
   useEffect(() => {
     if (screenshot) {
       setNotes(screenshot.notes || '')
       setSelectedFolder(screenshot.folder_id || '')
+      setSaved(false)
     }
   }, [screenshot?.id])
 
@@ -44,6 +47,8 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate }
     setSaving(true)
     await saveNotes(screenshot.id, notes)
     setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
     onUpdate()
   }
 
@@ -56,93 +61,125 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate }
 
   return (
     <div style={{
-      width: '300px',
+      width: '340px',
       flexShrink: 0,
       borderLeft: '0.5px solid #e8e8e8',
       display: 'flex',
       flexDirection: 'column',
       height: '100vh',
-      overflowY: 'auto',
-      background: 'white'
+      background: 'white',
+      overflow: 'hidden'
     }}>
+
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px', borderBottom: '0.5px solid #e8e8e8'
+        padding: '14px 16px', borderBottom: '0.5px solid #e8e8e8', flexShrink: 0
       }}>
         <span style={{ fontSize: '13px', fontWeight: '500', color: '#111' }}>Details</span>
         <button onClick={onClose} style={{
           background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: '18px', color: '#999', lineHeight: 1, padding: '0'
+          fontSize: '20px', color: '#bbb', lineHeight: 1, padding: '0'
         }}>×</button>
       </div>
 
-      {/* Image */}
-      {imageSrc && (
-        <div style={{ padding: '16px', borderBottom: '0.5px solid #f0f0f0' }}>
-          <img
-            src={imageSrc}
-            style={{ width: '100%', borderRadius: '8px', objectFit: 'cover' }}
-          />
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+
+        {/* Image — big and clickable */}
+        {imageSrc && (
+          <div
+            onClick={() => onOpenFullscreen(imageSrc)}
+            style={{
+              cursor: 'zoom-in', position: 'relative',
+              borderBottom: '0.5px solid #f0f0f0'
+            }}
+          >
+            <img
+              src={imageSrc}
+              style={{ width: '100%', display: 'block', maxHeight: '260px', objectFit: 'cover' }}
+            />
+            <div style={{
+              position: 'absolute', bottom: '8px', right: '8px',
+              background: 'rgba(0,0,0,0.4)', borderRadius: '4px',
+              padding: '3px 6px', fontSize: '11px', color: 'white'
+            }}>
+              Click to expand
+            </div>
+          </div>
+        )}
+
+        {/* File */}
+        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid #f0f0f0' }}>
+          <p style={{ fontSize: '11px', color: '#aaa', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>File</p>
+          <p style={{ fontSize: '13px', color: '#333', margin: 0, wordBreak: 'break-all', lineHeight: '1.4' }}>
+            {screenshot.filename}
+          </p>
         </div>
-      )}
 
-      {/* Filename */}
-      <div style={{ padding: '16px', borderBottom: '0.5px solid #f0f0f0' }}>
-        <p style={{ fontSize: '11px', color: '#999', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>File</p>
-        <p style={{ fontSize: '13px', color: '#333', margin: 0, wordBreak: 'break-all' }}>{screenshot.filename}</p>
-      </div>
+        {/* AI Description */}
+        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid #f0f0f0' }}>
+          <p style={{ fontSize: '11px', color: '#aaa', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI Description</p>
+          <p style={{ fontSize: '13px', color: '#555', margin: 0, lineHeight: '1.6' }}>
+            {screenshot.description}
+          </p>
+        </div>
 
-      {/* Description */}
-      <div style={{ padding: '16px', borderBottom: '0.5px solid #f0f0f0' }}>
-        <p style={{ fontSize: '11px', color: '#999', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Description</p>
-        <p style={{ fontSize: '13px', color: '#555', margin: 0, lineHeight: '1.5' }}>{screenshot.description}</p>
-      </div>
+        {/* Folder */}
+        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid #f0f0f0' }}>
+          <p style={{ fontSize: '11px', color: '#aaa', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Folder</p>
+          <select
+            value={selectedFolder}
+            onChange={e => handleFolderChange(e.target.value)}
+            style={{
+              width: '100%', fontSize: '13px', padding: '7px 10px',
+              border: '0.5px solid #e0e0e0', borderRadius: '7px',
+              background: 'white', color: '#333', cursor: 'pointer', outline: 'none'
+            }}
+          >
+            <option value="">No folder</option>
+            {folders.map(f => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+        </div>
 
-      {/* Folder */}
-      <div style={{ padding: '16px', borderBottom: '0.5px solid #f0f0f0' }}>
-        <p style={{ fontSize: '11px', color: '#999', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Folder</p>
-        <select
-          value={selectedFolder}
-          onChange={e => handleFolderChange(e.target.value)}
-          style={{
-            width: '100%', fontSize: '13px', padding: '6px 8px',
-            border: '0.5px solid #ddd', borderRadius: '6px',
-            background: 'white', color: '#333', cursor: 'pointer'
-          }}
-        >
-          <option value="">No folder</option>
-          {folders.map(f => (
-            <option key={f.id} value={f.id}>{f.name}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Notes */}
-      <div style={{ padding: '16px', flex: 1 }}>
-        <p style={{ fontSize: '11px', color: '#999', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Notes</p>
-        <textarea
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          placeholder="Add a note..."
-          style={{
-            width: '100%', minHeight: '120px', fontSize: '13px',
-            padding: '8px', border: '0.5px solid #ddd', borderRadius: '6px',
-            resize: 'vertical', fontFamily: 'system-ui', lineHeight: '1.5',
-            color: '#333', boxSizing: 'border-box'
-          }}
-        />
-        <button
-          onClick={handleSaveNotes}
-          disabled={saving}
-          style={{
-            marginTop: '8px', fontSize: '13px', padding: '6px 16px',
-            background: '#534AB7', color: 'white', border: 'none',
-            borderRadius: '6px', cursor: 'pointer', width: '100%'
-          }}
-        >
-          {saving ? 'Saving...' : 'Save notes'}
-        </button>
+        {/* Notes */}
+        <div style={{ padding: '14px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <p style={{ fontSize: '11px', color: '#aaa', margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Notes</p>
+            {saved && <span style={{ fontSize: '11px', color: '#1D9E75' }}>Saved</span>}
+          </div>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSaveNotes()
+            }}
+            placeholder="Add notes, context, or anything you want to remember about this screenshot..."
+            style={{
+              width: '100%', minHeight: '180px', fontSize: '13px',
+              padding: '10px', border: '0.5px solid #e0e0e0', borderRadius: '7px',
+              resize: 'vertical', fontFamily: 'system-ui', lineHeight: '1.6',
+              color: '#333', boxSizing: 'border-box', outline: 'none'
+            }}
+            onFocus={e => e.target.style.borderColor = '#534AB7'}
+            onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
+            <span style={{ fontSize: '11px', color: '#ccc' }}>⌘ + Enter to save</span>
+            <button
+              onClick={handleSaveNotes}
+              disabled={saving}
+              style={{
+                fontSize: '13px', padding: '7px 20px',
+                background: '#534AB7', color: 'white', border: 'none',
+                borderRadius: '7px', cursor: 'pointer'
+              }}
+            >
+              {saving ? 'Saving...' : 'Save notes'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -8,10 +8,21 @@
     "opener:default",
     "opener:allow-open-path",
     "fs:allow-read-dir",
-    "fs:allow-exists",
     "dialog:default",
     {
+      "identifier": "fs:allow-exists",
+      "allow": [{ "path": "**" }]
+    },
+    {
       "identifier": "fs:allow-read-file",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
       "allow": [{ "path": "**" }]
     },
     {

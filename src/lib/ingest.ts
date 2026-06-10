@@ -1,107 +1,88 @@
-import OpenAI from 'openai'
 import { readFile } from '@tauri-apps/plugin-fs'
-import { supabase } from './supabase'
+import { getProvider } from './ai'
+import * as store from './localStore'
+import { readSidecar, writeSidecar } from './vault'
 
-const openai = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true
-})
-
-export async function ingestScreenshot(filePath: string) {
-  const filename = filePath.split('/').pop() || filePath
-
-  // Fix 1: use maybeSingle() instead of single()
-  const { data: existing } = await supabase
-    .from('screenshots')
-    .select('id')
-    .eq('storage_path', filePath)
-    .maybeSingle()
-
-  if (existing) return { skipped: true }
-
-  const bytes = await readFile(filePath)
-  
-  // Fix 2: chunked base64 conversion for large files
+// Convert raw image bytes to base64 in chunks. Doing it in one
+// String.fromCharCode(...bytes) call overflows the call stack on large files.
+function toBase64(bytes: Uint8Array): string {
   let binary = ''
   const chunkSize = 8192
   for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.slice(i, i + chunkSize)
-    binary += String.fromCharCode(...chunk)
+    binary += String.fromCharCode(...bytes.slice(i, i + chunkSize))
   }
-  const base64 = btoa(binary)
-
-
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    max_tokens: 500,
-    messages: [{
-      role: 'user',
-      content: [
-        {
-          type: 'image_url',
-          image_url: { url: `data:image/png;base64,${base64}` }
-        },
-        {
-          type: 'text',
-          text: 'Describe this screenshot in 2-3 sentences. Then list any visible text. Format: DESCRIPTION: ... TEXT: ...'
-        }
-      ]
-    }]
-  })
-
-  const raw = response.choices[0].message.content || ''
-  const description = raw.match(/DESCRIPTION:(.*?)(?=TEXT:|$)/s)?.[1]?.trim() || raw
-  const extractedText = raw.match(/TEXT:(.*)/s)?.[1]?.trim() || ''
-
-  const embeddingResponse = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: `${description} ${extractedText}`
-  })
-  const embedding = embeddingResponse.data[0].embedding
-
-  const { error } = await supabase.from('screenshots').insert({
-    filename,
-    storage_path: filePath,
-    description,
-    extracted_text: extractedText,
-    embedding
-  })
-
-  if (error) throw error
-  return { success: true, description }
+  return btoa(binary)
 }
 
-export async function searchScreenshots(query: string) {
-  const embeddingResponse = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: query
-  })
-  const embedding = embeddingResponse.data[0].embedding
+// Pipeline: image bytes -> base64 -> GPT-4o (describe + extract text) ->
+// embedding -> write sidecar .md + upsert into the local index.
+export async function ingestScreenshot(filePath: string) {
+  if (store.getEntryByPath(filePath)) return { skipped: true as const }
 
-  const { data, error } = await supabase.rpc('search_screenshots', {
-    query_embedding: embedding,
-    match_threshold: 0.4,
-    match_count: 20
-  })
+  const ai = getProvider()
+  const existing = await readSidecar(filePath)
 
-  if (error) throw error
-  return data
+  const bytes = await readFile(filePath)
+  const base64 = toBase64(bytes)
+
+  const { description, text } = await ai.describe(base64)
+  const embedding = await ai.embed(`${description} ${text}`)
+
+  const now = new Date().toISOString()
+  const filename = filePath.split('/').pop() ?? filePath
+  const fm = existing?.frontmatter ?? {}
+
+  // Re-ingesting a screenshot that already has a sidecar preserves its id,
+  // tags, folder, notes, and original created date.
+  const entry: store.IndexEntry = {
+    id: typeof fm.id === 'string' ? fm.id : crypto.randomUUID(),
+    file: filename,
+    path: filePath,
+    description,
+    text,
+    tags: Array.isArray(fm.tags) ? (fm.tags as string[]) : [],
+    folder: typeof fm.folder === 'string' ? fm.folder : null,
+    notes: existing?.body.trim() ?? '',
+    embedding,
+    created: typeof fm.created === 'string' ? fm.created : now,
+    ingested: now,
+  }
+
+  await store.upsertEntry(entry)
+  await writeSidecar(
+    filePath,
+    {
+      id: entry.id,
+      file: entry.file,
+      tags: entry.tags,
+      folder: entry.folder,
+      description,
+      text,
+      created: entry.created,
+      ingested: now,
+    },
+    entry.notes,
+  )
+
+  return { skipped: false as const, id: entry.id, description }
+}
+
+export async function searchScreenshots(query: string): Promise<store.ScreenshotView[]> {
+  const ai = getProvider()
+  const embedding = await ai.embed(query)
+  return store.search(embedding).map((e) => ({ ...store.toScreenshot(e), similarity: e.similarity }))
 }
 
 export async function suggestFolder(description: string, existingFolders: string[]): Promise<string> {
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    max_tokens: 100,
-    messages: [{
-      role: 'user',
-      content: `Given this screenshot description and list of existing folders, suggest the best folder name. If none fit, suggest a new short folder name (1-2 words). Reply with ONLY the folder name, nothing else.
+  const ai = getProvider()
+  const out = await ai.complete(
+    `Given this screenshot description and list of existing folders, suggest the best folder name. If none fit, suggest a new short folder name (1-2 words). Reply with ONLY the folder name, nothing else.
 
 Description: ${description}
 
 Existing folders: ${existingFolders.length > 0 ? existingFolders.join(', ') : 'none yet'}
 
-Folder suggestion:`
-    }]
-  })
-  return response.choices[0].message.content?.trim() || 'Uncategorized'
+Folder suggestion:`,
+  )
+  return out || 'Uncategorized'
 }
