@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 .env
 notes-to-self.md
+
+# Claude Code
+.claude/
