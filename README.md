@@ -2,9 +2,14 @@
 
 Search your screenshots by what's actually *in* them.
 
-My screenshots folder was a graveyard. Hundreds of files named `Screenshot 2026-06-12 at 4.47.13 PM.png` and no way to find the one I wanted. So I built a desktop app that looks at each screenshot, figures out what it shows, and lets me find it later by typing what I remember, like "that missing API key error" or "the receipt from the hardware store."
+I made a pattern recognizing algorithm that ingests your screenshots on your laptop, and allows you to organize and search through them. Screenshots no longer have to be weightless clutter on your screen, but used as notes. You won't see 'Screenshot 2026-06-12 at 4.47.13 PM.png' anymore and rather be able to search for a screenshot with 'that missing API key error' or 'the reciept from the hardware store'.
 
-Built with Tauri (so it's a real desktop app) and React.
+Built with Tauri (so it's a real desktop app) and React. 100% native, so your data is safe.
+
+
+
+https://github.com/user-attachments/assets/c662c0cb-6cd9-4b4c-9465-035517bd43de
+
 
 ## How it works
 
