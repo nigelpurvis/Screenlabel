@@ -63,7 +63,7 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
     <div style={{
       width: '340px',
       flexShrink: 0,
-      borderLeft: '0.5px solid #e8e8e8',
+      borderLeft: '0.5px solid var(--border)',
       display: 'flex',
       flexDirection: 'column',
       height: '100vh',
@@ -74,12 +74,12 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 16px', borderBottom: '0.5px solid #e8e8e8', flexShrink: 0
+        padding: '14px 16px', borderBottom: '0.5px solid var(--border)', flexShrink: 0
       }}>
-        <span style={{ fontSize: '13px', fontWeight: '500', color: '#111' }}>Details</span>
+        <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)' }}>Details</span>
         <button onClick={onClose} style={{
           background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: '20px', color: '#bbb', lineHeight: 1, padding: '0'
+          fontSize: '20px', color: 'var(--text-faint)', lineHeight: 1, padding: '0'
         }}>×</button>
       </div>
 
@@ -91,7 +91,7 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
             onClick={() => onOpenFullscreen(imageSrc)}
             style={{
               cursor: 'zoom-in', position: 'relative',
-              borderBottom: '0.5px solid #f0f0f0'
+              borderBottom: '0.5px solid var(--surface-hover)'
             }}
           >
             <img
@@ -100,7 +100,7 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
             />
             <div style={{
               position: 'absolute', bottom: '8px', right: '8px',
-              background: 'rgba(0,0,0,0.4)', borderRadius: '4px',
+              background: 'rgba(0,0,0,0.4)', borderRadius: 'var(--radius-sm)',
               padding: '3px 6px', fontSize: '11px', color: 'white'
             }}>
               Click to expand
@@ -109,31 +109,31 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
         )}
 
         {/* File */}
-        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid #f0f0f0' }}>
-          <p style={{ fontSize: '11px', color: '#aaa', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>File</p>
-          <p style={{ fontSize: '13px', color: '#333', margin: 0, wordBreak: 'break-all', lineHeight: '1.4' }}>
+        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid var(--surface-hover)' }}>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>File</p>
+          <p style={{ fontSize: '13px', color: 'var(--text-primary)', margin: 0, wordBreak: 'break-all', lineHeight: '1.4' }}>
             {screenshot.filename}
           </p>
         </div>
 
         {/* AI Description */}
-        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid #f0f0f0' }}>
-          <p style={{ fontSize: '11px', color: '#aaa', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI Description</p>
-          <p style={{ fontSize: '13px', color: '#555', margin: 0, lineHeight: '1.6' }}>
+        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid var(--surface-hover)' }}>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI Description</p>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6' }}>
             {screenshot.description}
           </p>
         </div>
 
         {/* Folder */}
-        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid #f0f0f0' }}>
-          <p style={{ fontSize: '11px', color: '#aaa', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Folder</p>
+        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid var(--surface-hover)' }}>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Folder</p>
           <select
             value={selectedFolder}
             onChange={e => handleFolderChange(e.target.value)}
             style={{
               width: '100%', fontSize: '13px', padding: '7px 10px',
-              border: '0.5px solid #e0e0e0', borderRadius: '7px',
-              background: 'white', color: '#333', cursor: 'pointer', outline: 'none'
+              border: '0.5px solid var(--border)', borderRadius: 'var(--radius)',
+              background: 'white', color: 'var(--text-primary)', cursor: 'pointer', outline: 'none'
             }}
           >
             <option value="">No folder</option>
@@ -146,8 +146,8 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
         {/* Notes */}
         <div style={{ padding: '14px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <p style={{ fontSize: '11px', color: '#aaa', margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Notes</p>
-            {saved && <span style={{ fontSize: '11px', color: '#1D9E75' }}>Saved</span>}
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Notes</p>
+            {saved && <span style={{ fontSize: '11px', color: 'var(--success)' }}>Saved</span>}
           </div>
           <textarea
             value={notes}
@@ -158,22 +158,22 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
             placeholder="Add notes, context, or anything you want to remember about this screenshot..."
             style={{
               width: '100%', minHeight: '180px', fontSize: '13px',
-              padding: '10px', border: '0.5px solid #e0e0e0', borderRadius: '7px',
+              padding: '10px', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)',
               resize: 'vertical', fontFamily: 'system-ui', lineHeight: '1.6',
-              color: '#333', boxSizing: 'border-box', outline: 'none'
+              color: 'var(--text-primary)', boxSizing: 'border-box', outline: 'none'
             }}
-            onFocus={e => e.target.style.borderColor = '#534AB7'}
-            onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+            onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'}
           />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
-            <span style={{ fontSize: '11px', color: '#ccc' }}>⌘ + Enter to save</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-faint)' }}>⌘ + Enter to save</span>
             <button
               onClick={handleSaveNotes}
               disabled={saving}
               style={{
                 fontSize: '13px', padding: '7px 20px',
-                background: '#534AB7', color: 'white', border: 'none',
-                borderRadius: '7px', cursor: 'pointer'
+                background: 'var(--accent)', color: 'white', border: 'none',
+                borderRadius: 'var(--radius)', cursor: 'pointer'
               }}
             >
               {saving ? 'Saving...' : 'Save notes'}

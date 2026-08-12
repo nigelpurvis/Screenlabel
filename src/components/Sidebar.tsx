@@ -37,7 +37,7 @@ export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChan
     <div style={{
       width: '200px',
       flexShrink: 0,
-      borderRight: '0.5px solid #e8e8e8',
+      borderRight: '0.5px solid var(--border)',
       padding: '16px 0',
       display: 'flex',
       flexDirection: 'column',
@@ -46,7 +46,7 @@ export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChan
       overflowY: 'auto'
     }}>
       <div style={{ padding: '0 12px', marginBottom: '8px' }}>
-        <span style={{ fontSize: '11px', color: '#999', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Library
         </span>
       </div>
@@ -67,7 +67,7 @@ export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChan
 
       {folders.length > 0 && (
         <div style={{ padding: '8px 12px 4px', marginTop: '4px' }}>
-          <span style={{ fontSize: '11px', color: '#999', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Folders
           </span>
         </div>
@@ -103,7 +103,7 @@ export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChan
               placeholder="Folder name..."
               style={{
                 flex: 1, fontSize: '13px', padding: '4px 8px',
-                border: '0.5px solid #534AB7', borderRadius: '6px',
+                border: '0.5px solid var(--accent)', borderRadius: 'var(--radius-sm)',
                 outline: 'none'
               }}
             />
@@ -112,7 +112,7 @@ export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChan
           <button
             onClick={() => setCreating(true)}
             style={{
-              fontSize: '12px', color: '#999', background: 'none',
+              fontSize: '12px', color: 'var(--text-muted)', background: 'none',
               border: 'none', cursor: 'pointer', padding: '0',
               display: 'flex', alignItems: 'center', gap: '4px'
             }}
@@ -142,10 +142,10 @@ function SidebarItem({ label, selected, onClick, icon, color, onDelete }: {
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 12px', cursor: 'pointer', borderRadius: '6px',
+        padding: '6px 12px', cursor: 'pointer', borderRadius: 'var(--radius-sm)',
         margin: '0 6px',
-        background: selected ? '#EEEDFE' : hovered ? '#f5f5f5' : 'transparent',
-        color: selected ? '#534AB7' : color || '#555',
+        background: selected ? 'var(--accent-subtle)' : hovered ? 'var(--surface)' : 'transparent',
+        color: selected ? 'var(--accent)' : color || 'var(--text-secondary)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
@@ -160,7 +160,7 @@ function SidebarItem({ label, selected, onClick, icon, color, onDelete }: {
       {onDelete && hovered && (
         <span
           onClick={onDelete}
-          style={{ fontSize: '16px', color: '#ccc', lineHeight: 1, cursor: 'pointer' }}
+          style={{ fontSize: '16px', color: 'var(--text-faint)', lineHeight: 1, cursor: 'pointer' }}
         >
           ×
         </span>

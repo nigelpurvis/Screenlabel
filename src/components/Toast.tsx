@@ -25,8 +25,8 @@ export function Toast({ message, subtitle, actions, onDismiss, duration = 8000 }
   return (
     <div style={{
       position: 'fixed', bottom: '24px', right: '24px',
-      background: 'white', border: '0.5px solid #e0e0e0',
-      borderRadius: '10px', padding: '14px 16px',
+      background: 'white', border: '0.5px solid var(--border)',
+      borderRadius: 'var(--radius-lg)', padding: '14px 16px',
       boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
       maxWidth: '320px', zIndex: 1000,
       animation: 'slideUp 0.2s ease'
@@ -40,11 +40,11 @@ export function Toast({ message, subtitle, actions, onDismiss, duration = 8000 }
 
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
         <div style={{ flex: 1 }}>
-          <p style={{ margin: '0 0 2px', fontSize: '13px', fontWeight: '500', color: '#111' }}>
+          <p style={{ margin: '0 0 2px', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)' }}>
             {message}
           </p>
           {subtitle && (
-            <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#666', lineHeight: '1.4' }}>
+            <p style={{ margin: '0 0 10px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
               {subtitle}
             </p>
           )}
@@ -53,9 +53,9 @@ export function Toast({ message, subtitle, actions, onDismiss, duration = 8000 }
               {actions.map((a, i) => (
                 <button key={i} onClick={a.onClick} style={{
                   fontSize: '12px', padding: '5px 12px',
-                  borderRadius: '6px', cursor: 'pointer', border: 'none',
-                  background: a.primary ? '#534AB7' : '#f0f0f0',
-                  color: a.primary ? 'white' : '#333',
+                  borderRadius: 'var(--radius-sm)', cursor: 'pointer', border: 'none',
+                  background: a.primary ? 'var(--accent)' : 'var(--surface-hover)',
+                  color: a.primary ? 'white' : 'var(--text-primary)',
                   fontWeight: a.primary ? '500' : '400'
                 }}>
                   {a.label}
@@ -66,7 +66,7 @@ export function Toast({ message, subtitle, actions, onDismiss, duration = 8000 }
         </div>
         <button onClick={onDismiss} style={{
           background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: '16px', color: '#ccc', padding: '0', lineHeight: 1, flexShrink: 0
+          fontSize: '16px', color: 'var(--text-faint)', padding: '0', lineHeight: 1, flexShrink: 0
         }}>×</button>
       </div>
     </div>

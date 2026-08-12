@@ -1,4 +1,4 @@
-import { readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs'
+import { readTextFile, writeTextFile, exists, mkdir, rename, remove } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 
 // The local index: a derived cache of every ingested screenshot, including its
@@ -6,7 +6,20 @@ import { appDataDir, join } from '@tauri-apps/api/path'
 // its metadata for fast search and grid rendering. The sidecar .md files remain
 // the source of truth; this index can always be rebuilt from them.
 //
-// Stored as a single index.json in the app's data directory.
+// Stored as an append-only log (index.jsonl): one JSON entry per line, where a
+// later line for the same image path supersedes an earlier one. Writing a new
+// or updated entry costs one short append regardless of how many screenshots
+// are already indexed.
+//
+// The alternative — keeping a single index.json and rewriting it on every
+// change — is what this replaced. Each entry carries a 1536-float embedding
+// (~30KB of JSON), so a 1,000-screenshot library meant rewriting ~30MB of disk
+// for every single ingested image, and a batch ingest paid that cost once per
+// file. Appends make the write cost independent of library size.
+//
+// The tradeoff is that the log accumulates superseded lines, so it's compacted
+// (rewritten with only the live entries) once the dead weight outgrows the real
+// data. That's the same snapshot-plus-log design real databases use.
 
 export interface IndexEntry {
   id: string
@@ -23,34 +36,112 @@ export interface IndexEntry {
 }
 
 let entries: IndexEntry[] = []
-let indexFile = ''
+let logFile = ''
+let legacyFile = ''
+// Lines currently in the log, including superseded ones. Compared against the
+// number of live entries to decide when compaction is worth doing.
+let logLines = 0
 let loaded = false
-// Serializes writes so concurrent ingests can't corrupt index.json by writing
-// to the same file at once. Each persist() waits for the previous to finish.
+// Serializes writes so concurrent ingests can't interleave partial lines into
+// the log. Each write waits for the previous one to finish.
 let writeChain: Promise<void> = Promise.resolve()
 
 export async function initStore(): Promise<void> {
   if (loaded) return
   const dir = await appDataDir()
   if (!(await exists(dir))) await mkdir(dir, { recursive: true })
-  indexFile = await join(dir, 'index.json')
-  if (await exists(indexFile)) {
+  logFile = await join(dir, 'index.jsonl')
+  legacyFile = await join(dir, 'index.json')
+
+  if (await exists(logFile)) {
+    const raw = await readTextFile(logFile)
+    entries = replay(raw)
+    logLines = countLines(raw)
+  } else if (await exists(legacyFile)) {
+    // Migrate a pre-log index.json, then compact it into the new log. The old
+    // file is left in place as a backup rather than deleted.
     try {
-      entries = JSON.parse(await readTextFile(indexFile)) as IndexEntry[]
+      entries = JSON.parse(await readTextFile(legacyFile)) as IndexEntry[]
     } catch {
       entries = []
     }
+    await compact()
   } else {
     entries = []
   }
+
   loaded = true
+  if (shouldCompact(logLines, entries.length)) await compact()
 }
 
-async function persist(): Promise<void> {
+export function countLines(raw: string): number {
+  return raw.split('\n').filter((l) => l.trim()).length
+}
+
+// Serializes entries into log format — the inverse of replay(), and what
+// compaction writes.
+export function serializeLog(list: IndexEntry[]): string {
+  return list.map((e) => JSON.stringify(e)).join('\n') + '\n'
+}
+
+// Replays the log into the live entry set: later lines win, keyed by image path.
+// A line that fails to parse (a torn write from a crash, say) is skipped rather
+// than aborting the whole load — one bad line shouldn't cost the user an index.
+export function replay(raw: string): IndexEntry[] {
+  const byPath = new Map<string, IndexEntry>()
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      const entry = JSON.parse(line) as IndexEntry
+      if (entry?.path) byPath.set(entry.path, entry)
+    } catch {
+      continue
+    }
+  }
+  return [...byPath.values()]
+}
+
+// Compact once the log is more than half dead weight, with a floor so small
+// libraries don't rewrite constantly.
+export function shouldCompact(lines: number, entryCount: number): boolean {
+  return lines > entryCount * 2 + 50
+}
+
+// Rewrites the log with only the live entries. Writes to a temp file and renames
+// it into place, so an interrupted compaction leaves the previous log intact
+// instead of a half-written one.
+async function compact(): Promise<void> {
+  const body = serializeLog(entries)
+  const tmp = `${logFile}.tmp`
   writeChain = writeChain
     .catch(() => {})
-    .then(() => writeTextFile(indexFile, JSON.stringify(entries)))
+    .then(async () => {
+      await writeTextFile(tmp, body)
+      try {
+        // On Unix this replaces the old log atomically — at no point does a
+        // reader see a partial file.
+        await rename(tmp, logFile)
+      } catch {
+        // Windows won't rename onto an existing path, so fall back to an
+        // unlink-then-rename there.
+        if (await exists(logFile)) await remove(logFile)
+        await rename(tmp, logFile)
+      }
+      logLines = entries.length
+    })
   return writeChain
+}
+
+// Appends a single entry as one line — the hot path during ingest.
+async function appendEntry(entry: IndexEntry): Promise<void> {
+  writeChain = writeChain
+    .catch(() => {})
+    .then(async () => {
+      await writeTextFile(logFile, JSON.stringify(entry) + '\n', { append: true })
+      logLines++
+    })
+  await writeChain
+  if (shouldCompact(logLines, entries.length)) await compact()
 }
 
 export function allEntries(): IndexEntry[] {
@@ -69,7 +160,7 @@ export async function upsertEntry(entry: IndexEntry): Promise<void> {
   const i = entries.findIndex((e) => e.path === entry.path)
   if (i >= 0) entries[i] = entry
   else entries.push(entry)
-  await persist()
+  await appendEntry(entry)
 }
 
 export async function updateEntry(
@@ -79,7 +170,7 @@ export async function updateEntry(
   const entry = getEntry(id)
   if (!entry) return undefined
   Object.assign(entry, patch)
-  await persist()
+  await appendEntry(entry)
   return entry
 }
 
@@ -133,7 +224,7 @@ export function folderByName(name: string): FolderRec | undefined {
 // stops being fast enough, this is the one function to swap for sqlite-vec or
 // LanceDB — nothing else changes.
 
-function cosine(a: number[], b: number[]): number {
+export function cosine(a: number[], b: number[]): number {
   let dot = 0
   let normA = 0
   let normB = 0

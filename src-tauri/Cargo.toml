@@ -25,5 +25,10 @@ serde_json = "1"
 tauri-plugin-fs = { version = "2", features = ["watch"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
+# Stores the user's OpenAI key in the OS credential store (macOS Keychain,
+# Windows Credential Manager, Linux Secret Service) instead of webview storage.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# Thumbnail decoding/downscaling. Only the formats we actually ingest.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [workspace]
