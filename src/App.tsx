@@ -7,8 +7,11 @@ import { ingestScreenshot, searchScreenshots, suggestFolder } from './lib/ingest
 import { getFolders, createFolder, assignFolder, getScreenshotsByFolder } from './lib/folders'
 import { initStore } from './lib/localStore'
 import { hasApiKey, loadApiKey } from './lib/settings'
+import { revealItemInDir } from '@tauri-apps/plugin-opener'
+import { baseName, parentPath, prettyPath } from './lib/paths'
 import { Sidebar } from './components/Sidebar'
 import { DetailPanel } from './components/DetailPanel'
+import { NoteScreen } from './components/NoteScreen'
 import { Toast } from './components/Toast'
 import { SettingsModal } from './components/SettingsModal'
 
@@ -58,6 +61,19 @@ function App() {
   )
   const [showSettings, setShowSettings] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  // Determinate progress during ingest. A spinner alone can't tell you whether
+  // 60 screenshots are moving or stuck on the first one.
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [showInboxInfo, setShowInboxInfo] = useState(false)
+  const [showInboxSetup, setShowInboxSetup] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
+  // True until the first load finishes, so an empty grid can say "loading"
+  // instead of claiming the library is empty.
+  const [booting, setBooting] = useState(true)
+  const [suggestedInbox, setSuggestedInbox] = useState<string | null>(null)
+  // Handle returned by watchImmediate, kept so the inbox can actually be
+  // stopped or pointed somewhere else.
+  const unwatchInbox = useRef<(() => void) | null>(null)
 
   const displayedScreenshots = isSearchMode ? results : allScreenshots
 
@@ -71,6 +87,11 @@ function App() {
   })
 
   useEffect(() => {
+    // Tauri's webview APIs need the native shell. Bailing out early keeps the
+    // frontend renderable in a plain browser, which is useful for working on
+    // styling without launching the whole app.
+    if (!('__TAURI_INTERNALS__' in window)) return
+
     let unlisten: (() => void) | undefined
     let disposed = false
 
@@ -100,12 +121,20 @@ function App() {
 
   useEffect(() => {
     (async () => {
-      await initStore()
-      await loadApiKey()
-      if (!hasApiKey()) setShowSettings(true)
-      await loadFolders()
-      await loadScreenshots(null)
-      if (inboxFolder) startWatching(inboxFolder)
+      try {
+        await initStore()
+        await loadApiKey()
+        if (!hasApiKey()) setShowSettings(true)
+        await loadFolders()
+        await loadScreenshots(null)
+        if (inboxFolder) startWatching(inboxFolder)
+      } catch (e) {
+        console.error('Startup failed:', e)
+        setStatus(`Couldn't load your library: ${e}`)
+      } finally {
+        // Until this flips, an empty grid means "still loading", not "empty".
+        setBooting(false)
+      }
     })()
   }, [])
 
@@ -135,21 +164,66 @@ function App() {
     loadScreenshots(folderId)
   }
 
-  async function setupInbox() {
+  function applyInboxFolder(folder: string) {
+    localStorage.setItem('inboxFolder', folder)
+    setInboxFolder(folder)
+    startWatching(folder)
+    setStatus(`Watching ${baseName(folder)} — new screenshots will be added automatically.`)
+  }
+
+  async function pickInboxFolder() {
     const folder = await open({ directory: true })
     if (!folder) return
-    localStorage.setItem('inboxFolder', folder as string)
-    setInboxFolder(folder as string)
-    startWatching(folder as string)
+    applyInboxFolder(folder as string)
+  }
+
+  // Offers the folder macOS already saves screenshots to, rather than making
+  // the user reconfigure the OS or hunt for it in a file picker. Falls straight
+  // through to the picker if we can't work it out.
+  async function setupInbox() {
+    setShowInboxInfo(false)
+    try {
+      const suggested = await invoke<string | null>('default_screenshot_dir')
+      if (suggested) {
+        setSuggestedInbox(suggested)
+        setShowInboxSetup(true)
+        return
+      }
+    } catch (e) {
+      console.error('Could not detect the screenshot folder:', e)
+    }
+    await pickInboxFolder()
+  }
+
+  async function revealInFinder(path: string) {
+    try {
+      await revealItemInDir(path)
+    } catch (e) {
+      console.error('Could not reveal in Finder:', e)
+      setStatus(`Couldn't open ${baseName(path)} in Finder.`)
+    }
+  }
+
+  function stopWatchingInbox() {
+    unwatchInbox.current?.()
+    unwatchInbox.current = null
+    localStorage.removeItem('inboxFolder')
+    setInboxFolder(null)
+    setStatus('Stopped watching. New screenshots won’t be added automatically.')
   }
 
   async function startWatching(folder: string) {
-    await watchImmediate(folder, async (event) => {
+    // Drop any previous watcher first, or changing the inbox would leave the
+    // old folder still being watched for the rest of the session.
+    unwatchInbox.current?.()
+    unwatchInbox.current = await watchImmediate(folder, async (event) => {
       for (const path of event.paths) {
-        if (path.match(/\.(png|jpg|jpeg)$/i)) {
+        if (IMAGE_PATTERN.test(path)) {
           try {
             const result = await ingestScreenshot(path)
-            if (result.skipped) return
+            // `continue`, not `return` — a return here abandoned every
+            // remaining path when several files landed at once.
+            if (result.skipped) continue
 
             const folderNames = folders.map(f => f.name)
             const suggested = await suggestFolder(result.description || '', folderNames)
@@ -258,6 +332,7 @@ function App() {
     }
 
     setLoading(true)
+    setProgress({ done: 0, total })
 
     let done = 0
     let failed = 0
@@ -276,7 +351,8 @@ function App() {
           if (!firstError) firstError = String(e)
           console.error('Failed:', path, e)
         }
-        setStatus(`Ingesting ${done + failed}/${total}…${failed ? ` — ${failed} failed` : ''}`)
+        setStatus(`Ingesting ${done + failed} of ${total}${failed ? ` — ${failed} failed` : ''}`)
+        setProgress({ done: done + failed, total })
         if ((done + failed) % 4 === 0) loadScreenshots(selectedFolder)
       }
     }
@@ -284,6 +360,7 @@ function App() {
     await Promise.all(Array.from({ length: 4 }, () => worker()))
 
     setLoading(false)
+    setProgress(null)
     loadScreenshots(selectedFolder)
     setStatus(
       failed > 0
@@ -337,6 +414,7 @@ function App() {
         selectedFolder={selectedFolder}
         onSelectFolder={handleFolderSelect}
         onFoldersChange={loadFolders}
+        onOpenSettings={() => setShowSettings(true)}
       />
 
       {/* Main content */}
@@ -363,71 +441,351 @@ function App() {
               placeholder="Search screenshots..."
               style={{
                 width: '100%', padding: '8px 12px 8px 32px',
-                fontSize: '13px', border: '0.5px solid var(--border)',
+                fontSize: 'var(--text-base)', border: '0.5px solid var(--border)',
                 borderRadius: 'var(--radius)', outline: 'none', boxSizing: 'border-box', color: 'var(--text-primary)'
               }}
             />
           </div>
           <button onClick={handleSearch} disabled={loading} style={{
             background: 'var(--accent)', color: 'white', border: 'none',
-            borderRadius: 'var(--radius)', padding: '7px 16px', fontSize: '13px', cursor: 'pointer'
+            borderRadius: 'var(--radius)', padding: '7px 16px', fontSize: 'var(--text-base)',
+            cursor: loading ? 'default' : 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            gap: 'var(--space-2)', minWidth: '84px'
           }}>
-            {loading ? '...' : 'Search'}
+            {loading && <span className="sl-spinner" aria-hidden="true" />}
+            {loading ? 'Working' : 'Search'}
           </button>
           <button onClick={handleAddFiles} disabled={loading} title="Add individual screenshots" style={{
             background: 'white', color: 'var(--text-secondary)', border: '0.5px solid var(--border)',
-            borderRadius: 'var(--radius)', padding: '7px 14px', fontSize: '13px', cursor: 'pointer'
+            borderRadius: 'var(--radius)', padding: '7px 14px', fontSize: 'var(--text-base)', cursor: 'pointer'
           }}>
             + Files
           </button>
           <button onClick={handleAddFolder} disabled={loading} title="Add every screenshot in a folder" style={{
             background: 'white', color: 'var(--text-secondary)', border: '0.5px solid var(--border)',
-            borderRadius: 'var(--radius)', padding: '7px 14px', fontSize: '13px', cursor: 'pointer'
+            borderRadius: 'var(--radius)', padding: '7px 14px', fontSize: 'var(--text-base)', cursor: 'pointer'
           }}>
             + Folder
           </button>
-          <button onClick={() => setShowSettings(true)} title="Settings" style={{
-            background: 'white', color: 'var(--text-secondary)', border: '0.5px solid var(--border)',
-            borderRadius: 'var(--radius)', padding: '7px 10px', fontSize: '13px', cursor: 'pointer'
-          }}>
-            ⚙
+          <button
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+            aria-label="Settings"
+            style={{
+              background: 'white', color: 'var(--text-secondary)',
+              border: '0.5px solid var(--border)', borderRadius: 'var(--radius)',
+              padding: 'var(--space-2)', cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
+            }}
+          >
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round"
+              style={{ display: 'block' }}
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
           </button>
           {!inboxFolder && (
-            <button onClick={setupInbox} style={{
-              background: 'var(--accent-subtle)', color: 'var(--accent)', border: 'none',
-              borderRadius: 'var(--radius)', padding: '7px 14px', fontSize: '13px', cursor: 'pointer'
-            }}>
-              Set up inbox
-            </button>
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <button onClick={setupInbox} style={{
+                background: 'var(--accent-subtle)', color: 'var(--accent-on-subtle)', border: 'none',
+                borderRadius: 'var(--radius)', padding: '7px 14px',
+                fontSize: 'var(--text-base)', cursor: 'pointer'
+              }}>
+                Set up inbox
+              </button>
+
+              {showInboxSetup && suggestedInbox && (
+                <>
+                  <div
+                    onClick={() => setShowInboxSetup(false)}
+                    style={{ position: 'fixed', inset: 0, zIndex: 900 }}
+                  />
+                  <div
+                    className="sl-popover"
+                    style={{
+                      position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 901,
+                      width: '300px', padding: 'var(--space-3)',
+                      background: 'var(--bg)', border: '0.5px solid var(--border)',
+                      borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <p style={{
+                      margin: 0, fontSize: 'var(--text-base)', fontWeight: 500,
+                      color: 'var(--text-primary)'
+                    }}>
+                      Watch your screenshots folder?
+                    </p>
+                    <p style={{
+                      margin: 'var(--space-2) 0 0', fontSize: 'var(--text-xs)',
+                      color: 'var(--text-muted)', textTransform: 'uppercase',
+                      letterSpacing: '0.06em'
+                    }}>
+                      This Mac saves screenshots to
+                    </p>
+                    <p
+                      title={suggestedInbox}
+                      style={{
+                        margin: '2px 0 0', fontSize: 'var(--text-sm)',
+                        color: 'var(--text-primary)',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                      }}
+                    >
+                      {prettyPath(suggestedInbox)}
+                    </p>
+                    <p style={{
+                      margin: 'var(--space-2) 0 var(--space-3)', fontSize: 'var(--text-xs)',
+                      color: 'var(--text-muted)', lineHeight: 1.5
+                    }}>
+                      New screenshots saved there get added automatically.
+                    </p>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', marginLeft: '1px' }}>
+                      <button
+                        onClick={() => { setShowInboxSetup(false); applyInboxFolder(suggestedInbox) }}
+                        style={{
+                          flex: 1, background: 'var(--accent)', color: 'white', border: 'none',
+                          borderRadius: 'var(--radius)', padding: '7px 10px',
+                          fontSize: 'var(--text-sm)', cursor: 'pointer'
+                        }}
+                      >
+                        Use this folder
+                      </button>
+                      <button
+                        onClick={() => { setShowInboxSetup(false); pickInboxFolder() }}
+                        style={{
+                          flex: 1, background: 'var(--bg)', color: 'var(--text-secondary)',
+                          border: '0.5px solid var(--border)', borderRadius: 'var(--radius)',
+                          padding: '7px 10px', fontSize: 'var(--text-sm)', cursor: 'pointer'
+                        }}
+                      >
+                        Choose another
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           )}
           {inboxFolder && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '6px',
-              fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--surface)',
-              padding: '4px 10px', borderRadius: 'var(--radius-full)', border: '0.5px solid var(--border)',
-              flexShrink: 0
-            }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: 'var(--radius-full)', background: 'var(--success)' }}/>
-              Watching
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <button
+                onClick={() => setShowInboxInfo(v => !v)}
+                title="Inbox details"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  fontSize: 'var(--text-sm)', color: 'var(--text-secondary)',
+                  background: showInboxInfo ? 'var(--surface-hover)' : 'var(--surface)',
+                  padding: '5px 10px', borderRadius: 'var(--radius-full)',
+                  border: '0.5px solid var(--border)', cursor: 'pointer'
+                }}
+              >
+                <span style={{
+                  width: '6px', height: '6px', borderRadius: 'var(--radius-full)',
+                  background: 'var(--success)', flexShrink: 0,
+                  animation: 'sl-pulse 2.4s ease-in-out infinite'
+                }} />
+                Watching
+              </button>
+
+              {showInboxInfo && (
+                <>
+                  {/* Click-away layer, so the popover closes like a native menu. */}
+                  <div
+                    onClick={() => setShowInboxInfo(false)}
+                    style={{ position: 'fixed', inset: 0, zIndex: 900 }}
+                  />
+                  <div
+                    className="sl-popover"
+                    style={{
+                      position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 901,
+                      width: '280px', padding: 'var(--space-3)',
+                      background: 'var(--bg)', border: '0.5px solid var(--border)',
+                      borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <p style={{
+                      margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
+                      textTransform: 'uppercase', letterSpacing: '0.06em'
+                    }}>
+                      Watching folder
+                    </p>
+                    {/* Folder name first, abbreviated parent beneath. Showing
+                        the raw path here wrapped mid-word; both lines now clip
+                        with an ellipsis and the full path is on hover.
+                        Clicking reveals the folder in Finder. */}
+                    <button
+                      onClick={() => revealInFinder(inboxFolder)}
+                      title={`Show "${inboxFolder}" in Finder`}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        background: 'none', border: 'none', padding: 0,
+                        margin: 'var(--space-1) 0 0', cursor: 'pointer'
+                      }}
+                    >
+                      <span style={{
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        fontSize: 'var(--text-base)', fontWeight: 500,
+                        color: 'var(--accent)'
+                      }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {baseName(inboxFolder)}
+                        </span>
+                        <svg
+                          width="12" height="12" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2.5"
+                          strokeLinecap="round" strokeLinejoin="round"
+                          style={{ flexShrink: 0 }}
+                          aria-hidden="true"
+                        >
+                          <path d="M7 17L17 7M17 7H8M17 7v9" />
+                        </svg>
+                      </span>
+                      <span style={{
+                        display: 'block', fontSize: 'var(--text-xs)',
+                        color: 'var(--text-muted)', marginTop: '2px',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                      }}>
+                        {parentPath(inboxFolder)}
+                      </span>
+                    </button>
+                    <p style={{
+                      margin: 'var(--space-2) 0 var(--space-3)', fontSize: 'var(--text-xs)',
+                      color: 'var(--text-muted)', lineHeight: 1.5
+                    }}>
+                      New screenshots saved here are added automatically.
+                    </p>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', marginLeft: '1px' }}>
+                      <button
+                        onClick={() => { setShowInboxInfo(false); setupInbox() }}
+                        style={{
+                          flex: 1, background: 'var(--accent-subtle)', color: 'var(--accent-on-subtle)',
+                          border: 'none', borderRadius: 'var(--radius)', padding: '7px 10px',
+                          fontSize: 'var(--text-sm)', cursor: 'pointer'
+                        }}
+                      >
+                        Change
+                      </button>
+                      <button
+                        onClick={() => { setShowInboxInfo(false); stopWatchingInbox() }}
+                        style={{
+                          flex: 1, background: 'var(--bg)', color: 'var(--text-secondary)',
+                          border: '0.5px solid var(--border)', borderRadius: 'var(--radius)',
+                          padding: '7px 10px', fontSize: 'var(--text-sm)', cursor: 'pointer'
+                        }}
+                      >
+                        Stop
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
 
-        {/* Status */}
-        {status && (
-          <div style={{ padding: '8px 20px', fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>
-            {status}
+        {/* Status + progress */}
+        {(status || loading) && (
+          <div style={{
+            padding: 'var(--space-2) var(--space-5)', flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: 'var(--space-3)'
+          }}>
+            {loading && (
+              <span
+                className="sl-spinner"
+                style={{ color: 'var(--accent)', width: '12px', height: '12px' }}
+                aria-hidden="true"
+              />
+            )}
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', flexShrink: 0 }}>
+              {status}
+            </span>
+            {progress && progress.total > 1 && (
+              <div
+                role="progressbar"
+                aria-valuenow={progress.done}
+                aria-valuemin={0}
+                aria-valuemax={progress.total}
+                style={{
+                  flex: 1, maxWidth: '240px', height: '4px', overflow: 'hidden',
+                  background: 'var(--surface-hover)', borderRadius: 'var(--radius-full)'
+                }}
+              >
+                <div style={{
+                  width: `${Math.round((progress.done / progress.total) * 100)}%`,
+                  height: '100%', background: 'var(--accent)',
+                  borderRadius: 'var(--radius-full)', transition: 'width 0.2s ease-out'
+                }} />
+              </div>
+            )}
           </div>
         )}
 
         {/* Grid */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-          {displayedScreenshots.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-faint)' }}>
-              <div style={{ fontSize: '32px', marginBottom: '12px' }}>🖼</div>
-              <p style={{ fontSize: '14px', margin: 0 }}>
-                {isSearchMode ? 'No results found' : 'No screenshots yet — ingest a folder to get started'}
+          {booting ? (
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', minHeight: '60%', gap: 'var(--space-3)'
+            }}>
+              <span
+                className="sl-spinner"
+                style={{ color: 'var(--text-faint)', width: '18px', height: '18px' }}
+                aria-hidden="true"
+              />
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                Loading your library…
               </p>
+            </div>
+          ) : displayedScreenshots.length === 0 ? (
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', textAlign: 'center',
+              minHeight: '60%', padding: 'var(--space-6) var(--space-5)',
+              gap: 'var(--space-2)'
+            }}>
+              <svg
+                width="56" height="56" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="1.25"
+                strokeLinecap="round" strokeLinejoin="round"
+                style={{ display: 'block', color: 'var(--text-faint)', marginBottom: 'var(--space-2)' }}
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2.5" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+              <p style={{
+                margin: 0, fontSize: 'var(--text-lg)', fontWeight: 500,
+                color: 'var(--text-secondary)'
+              }}>
+                {isSearchMode ? 'Nothing matched that' : 'Nothing to see here!'}
+              </p>
+              <p style={{
+                margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-muted)',
+                maxWidth: '38ch', lineHeight: 1.6
+              }}>
+                {isSearchMode
+                  ? 'Try describing what you remember instead of the exact words — a color, a logo, the gist of it.'
+                  : "You'd better start screenshotting."}
+              </p>
+              {!isSearchMode && (
+                <button
+                  onClick={handleAddFiles}
+                  style={{
+                    marginTop: 'var(--space-3)', background: 'var(--accent-subtle)',
+                    color: 'var(--accent-on-subtle)', border: 'none',
+                    borderRadius: 'var(--radius)', padding: '8px 16px',
+                    fontSize: 'var(--text-base)', fontWeight: 500, cursor: 'pointer'
+                  }}
+                >
+                  Add screenshots
+                </button>
+              )}
             </div>
           ) : (
             <div style={{
@@ -473,7 +831,7 @@ function App() {
                     </div>
                     <div style={{ padding: '8px' }}>
                       <p style={{
-                        fontSize: '11px', color: 'var(--text-primary)', margin: '0 0 2px',
+                        fontSize: 'var(--text-xs)', color: 'var(--text-primary)', margin: '0 0 2px',
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         fontWeight: '500'
                       }}>
@@ -481,7 +839,7 @@ function App() {
                       </p>
                       {s.similarity !== undefined && (
                         <span style={{
-                          fontSize: '10px', background: 'var(--accent-subtle)',
+                          fontSize: 'var(--text-xs)', background: 'var(--accent-subtle)',
                           color: 'var(--accent)', padding: '1px 6px', borderRadius: 'var(--radius)'
                         }}>
                           {Math.round(s.similarity * 100)}% match
@@ -508,6 +866,7 @@ function App() {
           onClose={() => setSelectedScreenshot(null)}
           onUpdate={() => loadScreenshots(selectedFolder)}
           onOpenFullscreen={(src) => setFullscreenSrc(src)}
+          onOpenNotes={() => setNotesOpen(true)}
         />
       )}
 
@@ -518,6 +877,18 @@ function App() {
           subtitle={toast.subtitle}
           actions={toast.actions}
           onDismiss={() => setToast(null)}
+        />
+      )}
+
+      {/* Full-screen note editor */}
+      {notesOpen && selectedScreenshot && (
+        <NoteScreen
+          screenshot={selectedScreenshot}
+          imageSrc={convertFileSrc(
+            selectedScreenshot.file_path || selectedScreenshot.storage_path
+          )}
+          onClose={() => setNotesOpen(false)}
+          onSaved={() => loadScreenshots(selectedFolder)}
         />
       )}
 

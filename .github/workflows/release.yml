@@ -1,0 +1,72 @@
+name: Release
+
+# Builds, signs, and notarizes a macOS app and attaches it to a GitHub Release.
+#
+# Triggered by pushing a version tag:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# The release is created as a DRAFT so you can write notes and sanity-check the
+# .dmg before anyone can download it. Publishing is a deliberate click.
+#
+# Signing and notarization need the Apple secrets listed in RELEASING.md. Without
+# them the build still succeeds, but the resulting app is unsigned and macOS will
+# warn users it can't be verified — see RELEASING.md before a real release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      # Needed to create the release and upload the .dmg.
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Both architectures, so one download works on Apple Silicon and Intel.
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Don't ship a build that doesn't typecheck or whose tests fail.
+      - run: npx tsc --noEmit
+      - run: npm test
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Developer ID certificate, base64-encoded, and its password.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Notarization credentials.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Screenlabel __VERSION__
+          releaseBody: |
+            Download the `.dmg` below, open it, and drag Screenlabel to Applications.
+
+            Screenlabel runs on your own OpenAI API key. Your screenshots and notes
+            stay on your machine — there's no account and no server.
+          releaseDraft: true
+          prerelease: false
+          args: --target universal-apple-darwin

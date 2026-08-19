@@ -37,16 +37,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           boxShadow: '0 12px 40px rgba(0,0,0,0.2)',
         }}
       >
-        <h2 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 4px', color: 'var(--text-primary)' }}>
+        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, margin: '0 0 4px', color: 'var(--text-primary)' }}>
           Settings
         </h2>
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 20px' }}>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 20px' }}>
           Screenlabel runs on your own OpenAI key — it stays on this device.
         </p>
 
         <label
           style={{
-            fontSize: '11px',
+            fontSize: 'var(--text-xs)',
             color: 'var(--text-muted)',
             textTransform: 'uppercase',
             letterSpacing: '0.06em',
@@ -65,7 +65,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             width: '100%',
             marginTop: '6px',
             padding: '9px 12px',
-            fontSize: '13px',
+            fontSize: 'var(--text-base)',
             border: '0.5px solid var(--border)',
             borderRadius: 'var(--radius)',
             outline: 'none',
@@ -73,12 +73,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             color: 'var(--text-primary)',
           }}
         />
-        <p style={{ fontSize: '11px', color: 'var(--text-faint)', margin: '8px 0 0', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', margin: '8px 0 0', lineHeight: 1.5 }}>
           Get a key at platform.openai.com/api-keys. Stored in your system keychain, never in the app.
         </p>
 
         {error && (
-          <p style={{ fontSize: '12px', color: 'var(--danger)', margin: '12px 0 0', lineHeight: 1.5 }}>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)', margin: '12px 0 0', lineHeight: 1.5 }}>
             {error}
           </p>
         )}
@@ -87,7 +87,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           <button
             onClick={onClose}
             style={{
-              fontSize: '13px',
+              fontSize: 'var(--text-base)',
               padding: '8px 16px',
               background: 'white',
               color: 'var(--text-secondary)',
@@ -101,7 +101,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           <button
             onClick={handleSave}
             style={{
-              fontSize: '13px',
+              fontSize: 'var(--text-base)',
               padding: '8px 20px',
               background: 'var(--accent)',
               color: 'white',

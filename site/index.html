@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Screenlabel — search your screenshots by what's in them</title>
+    <meta
+      name="description"
+      content="A local-first Mac app that makes your screenshots findable. Search by what you remember seeing. Your files stay on your disk, in plain Markdown. No account, no server."
+    />
+
+    <meta property="og:title" content="Screenlabel" />
+    <meta
+      property="og:description"
+      content="Search your screenshots by what's in them. Local-first, plain Markdown, no account."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#0d0d10" />
+
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <header class="wrap">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span class="brand-name">Screenlabel</span>
+      </div>
+      <nav>
+        <a href="#how">How it works</a>
+        <a href="#privacy">Privacy</a>
+        <a href="https://github.com/nigelpurvis/Screenlabel">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="wrap hero">
+        <p class="eyebrow">macOS · local-first</p>
+        <h1>Search your screenshots by&nbsp;what's in them.</h1>
+        <p class="lede">
+          Your screenshots folder is a graveyard of
+          <code>Screenshot 2026-06-12 at 4.47.13 PM.png</code>. Screenlabel reads
+          each one, then lets you find it by typing what you remember — "that
+          missing API key error", "the receipt from the hardware store".
+        </p>
+
+        <div class="cta">
+          <a class="button" href="https://github.com/nigelpurvis/Screenlabel/releases/latest">
+            Download for macOS
+          </a>
+          <span class="cta-note">
+            Universal · Apple Silicon and Intel · runs on your own OpenAI key
+          </span>
+        </div>
+
+        <!-- Drop a screen recording at site/demo.gif and it appears here.
+             Until then the placeholder below stands in, so a missing file never
+             shows a broken image. -->
+        <figure class="shot">
+          <img src="demo.gif" alt="Searching a screenshot library in Screenlabel" />
+          <div class="shot-placeholder" hidden>
+            <span class="shot-placeholder-mark" aria-hidden="true"></span>
+            <p>Demo recording coming soon</p>
+          </div>
+          <figcaption>Type what you remember. Results rank as you go.</figcaption>
+        </figure>
+      </section>
+
+      <section class="wrap features" id="how">
+        <article>
+          <h2>Your files, not a database</h2>
+          <p>
+            Every screenshot gets a plain <code>.md</code> file next to it, holding
+            its description, tags, and your notes. Open them in Obsidian, grep
+            them, sync them, move them. The index is a cache you can delete and
+            rebuild.
+          </p>
+        </article>
+
+        <article>
+          <h2>Notes that are actually notes</h2>
+          <p>
+            Screenshots are where things go to be forgotten. Write on them in a
+            full-screen Markdown editor with live preview, and the writing lands
+            in a file you own.
+          </p>
+        </article>
+
+        <article>
+          <h2>Search by meaning</h2>
+          <p>
+            Descriptions and any text in the image are embedded, so searching
+            "pricing page" finds the screenshot of a pricing table even when the
+            words don't match. Ranking runs locally, in under a millisecond.
+          </p>
+        </article>
+
+        <article>
+          <h2>Drop it in and forget it</h2>
+          <p>
+            Point Screenlabel at the folder your Mac already saves screenshots to.
+            New ones get read and filed as they appear.
+          </p>
+        </article>
+      </section>
+
+      <section class="wrap privacy" id="privacy">
+        <h2>What leaves your machine</h2>
+        <p>
+          One thing: the screenshots you choose to have described, sent directly
+          from your Mac to OpenAI using <strong>your own API key</strong>. There
+          is no Screenlabel server, no account, and no telemetry. Your key is
+          stored in the macOS Keychain, not in the app.
+        </p>
+        <p class="fine">
+          You'll need an OpenAI API key. Describing a screenshot costs a fraction
+          of a cent, billed to you by OpenAI, with no markup from us.
+        </p>
+      </section>
+    </main>
+
+    <footer class="wrap">
+      <p>
+        Built by <a href="https://github.com/nigelpurvis">Nigel Purvis</a>.
+        <a href="https://github.com/nigelpurvis/Screenlabel">Source on GitHub</a>.
+      </p>
+    </footer>
+
+    <script>
+      // Swap in the placeholder if there's no demo recording yet. Once
+      // site/demo.gif exists this does nothing.
+      const demo = document.querySelector('.shot img')
+
+      function showPlaceholder() {
+        demo.hidden = true
+        document.querySelector('.shot-placeholder').hidden = false
+      }
+
+      // The image may already have failed by the time this script runs, in which
+      // case no error event is coming — a finished load with no dimensions means
+      // it broke.
+      if (demo.complete && demo.naturalWidth === 0) {
+        showPlaceholder()
+      } else {
+        demo.addEventListener('error', showPlaceholder)
+      }
+    </script>
+  </body>
+</html>

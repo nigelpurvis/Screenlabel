@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { createFolder, deleteFolder } from '../lib/folders'
+import { ProfileFooter } from './ProfileFooter'
 
 interface Folder {
   id: string
@@ -12,9 +13,10 @@ interface Props {
   selectedFolder: string | null
   onSelectFolder: (id: string | null) => void
   onFoldersChange: () => void
+  onOpenSettings: () => void
 }
 
-export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChange }: Props) {
+export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChange, onOpenSettings }: Props) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
 
@@ -38,15 +40,18 @@ export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChan
       width: '200px',
       flexShrink: 0,
       borderRight: '0.5px solid var(--border)',
-      padding: '16px 0',
       display: 'flex',
       flexDirection: 'column',
-      gap: '2px',
-      height: '100vh',
-      overflowY: 'auto'
+      height: '100vh'
     }}>
+      {/* Only the folder list scrolls; the profile strip stays pinned. */}
+      <div style={{
+        flex: 1, minHeight: 0, overflowY: 'auto',
+        display: 'flex', flexDirection: 'column', gap: '2px',
+        padding: '16px 0'
+      }}>
       <div style={{ padding: '0 12px', marginBottom: '8px' }}>
-        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Library
         </span>
       </div>
@@ -67,7 +72,7 @@ export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChan
 
       {folders.length > 0 && (
         <div style={{ padding: '8px 12px 4px', marginTop: '4px' }}>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Folders
           </span>
         </div>
@@ -102,7 +107,7 @@ export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChan
               }}
               placeholder="Folder name..."
               style={{
-                flex: 1, fontSize: '13px', padding: '4px 8px',
+                flex: 1, fontSize: 'var(--text-base)', padding: '4px 8px',
                 border: '0.5px solid var(--accent)', borderRadius: 'var(--radius-sm)',
                 outline: 'none'
               }}
@@ -112,15 +117,18 @@ export function Sidebar({ folders, selectedFolder, onSelectFolder, onFoldersChan
           <button
             onClick={() => setCreating(true)}
             style={{
-              fontSize: '12px', color: 'var(--text-muted)', background: 'none',
+              fontSize: 'var(--text-sm)', color: 'var(--text-muted)', background: 'none',
               border: 'none', cursor: 'pointer', padding: '0',
               display: 'flex', alignItems: 'center', gap: '4px'
             }}
           >
-            <span style={{ fontSize: '16px', lineHeight: 1 }}>+</span> New folder
+            <span style={{ fontSize: 'var(--text-lg)', lineHeight: 1 }}>+</span> New folder
           </button>
         )}
       </div>
+      </div>
+
+      <ProfileFooter onOpenSettings={onOpenSettings} />
     </div>
   )
 }
@@ -151,7 +159,7 @@ function SidebarItem({ label, selected, onClick, icon, color, onDelete }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
         {icon}
         <span style={{
-          fontSize: '13px', whiteSpace: 'nowrap',
+          fontSize: 'var(--text-base)', whiteSpace: 'nowrap',
           overflow: 'hidden', textOverflow: 'ellipsis'
         }}>
           {label}
@@ -160,7 +168,7 @@ function SidebarItem({ label, selected, onClick, icon, color, onDelete }: {
       {onDelete && hovered && (
         <span
           onClick={onDelete}
-          style={{ fontSize: '16px', color: 'var(--text-faint)', lineHeight: 1, cursor: 'pointer' }}
+          style={{ fontSize: 'var(--text-lg)', color: 'var(--text-faint)', lineHeight: 1, cursor: 'pointer' }}
         >
           ×
         </span>

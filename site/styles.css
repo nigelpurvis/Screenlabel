@@ -1,0 +1,330 @@
+/* Screenlabel landing page.
+   Dark, restrained, developer-facing. Shares the app's accent so the site and
+   the product read as one thing. No build step — plain CSS on purpose. */
+
+:root {
+  --bg: #0d0d10;
+  --surface: #15151a;
+  --surface-2: #1c1c23;
+  --border: #26262f;
+  --text: #f2f2f5;
+  --text-dim: #a2a2ae;
+  --text-faint: #6c6c7a;
+  --accent: #8b82ff;
+  --accent-dim: #534ab7;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  --measure: 1080px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* The `hidden` attribute is only `display: none` in the UA stylesheet, so any
+   author rule setting `display` beats it. This keeps hidden meaning hidden. */
+[hidden] {
+  display: none !important;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.1em 0.4em;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Header */
+
+header.wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-top: 28px;
+  padding-bottom: 28px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--accent-dim);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.brand-name {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+header nav {
+  display: flex;
+  gap: 24px;
+  font-size: 14px;
+}
+
+header nav a {
+  color: var(--text-dim);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+header nav a:hover {
+  color: var(--text);
+}
+
+/* Hero */
+
+.hero {
+  padding: 64px 24px 0;
+}
+
+.eyebrow {
+  margin: 0 0 20px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2.1rem, 6vw, 3.9rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-weight: 500;
+  max-width: 20ch;
+}
+
+.lede {
+  margin: 24px 0 0;
+  max-width: 60ch;
+  font-size: clamp(1rem, 2vw, 1.14rem);
+  color: var(--text-dim);
+}
+
+.cta {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 40px 0 0;
+}
+
+.button {
+  display: inline-block;
+  background: var(--accent-dim);
+  color: #fff;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 500;
+  padding: 13px 24px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: background 0.15s ease;
+}
+
+.button:hover {
+  background: #635ac9;
+}
+
+.cta-note {
+  font-size: 13px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+
+/* Demo */
+
+.shot {
+  margin: 64px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 10px;
+  overflow: hidden;
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+}
+
+/* Stand-in until a demo recording exists. Sized to roughly the app's aspect
+   ratio so the page doesn't reflow when the real thing lands. */
+.shot-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  height: 300px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+}
+
+.shot-placeholder p {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.shot-placeholder-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.shot figcaption {
+  padding: 14px 6px 6px;
+  font-size: 13px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+/* Features */
+
+/* Two columns, so the four cards form an even 2x2 instead of leaving one
+   stranded on a second row. Collapses to one column on narrow screens. */
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 44px 64px;
+  padding-top: 104px;
+}
+
+.features h2 {
+  margin: 0 0 10px;
+  font-size: 1.06rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.features p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 15px;
+}
+
+/* Privacy */
+
+.privacy {
+  margin-top: 104px;
+  padding-top: 40px;
+  padding-bottom: 40px;
+  border-top: 1px solid var(--border);
+}
+
+.privacy h2 {
+  margin: 0 0 14px;
+  font-size: 1.3rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.privacy p {
+  margin: 0;
+  max-width: 66ch;
+  color: var(--text-dim);
+}
+
+.privacy strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.fine {
+  margin-top: 14px !important;
+  font-size: 14px;
+  color: var(--text-faint) !important;
+}
+
+/* Footer */
+
+footer.wrap {
+  padding-top: 40px;
+  padding-bottom: 56px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--text-faint);
+}
+
+footer a {
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+footer a:hover {
+  color: var(--text);
+}
+
+/* Focus states — keyboard users get a visible ring everywhere. */
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+@media (max-width: 600px) {
+  header nav {
+    gap: 14px;
+    font-size: 13px;
+  }
+  .hero {
+    padding-top: 40px;
+  }
+  .features {
+    padding-top: 72px;
+  }
+  .privacy {
+    margin-top: 72px;
+  }
+}

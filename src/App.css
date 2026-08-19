@@ -41,12 +41,19 @@
   --radius-lg:  12px;
   --radius-full: 999px;
 
+  /* Type. SF Pro on macOS via -apple-system — the native system font, which is
+     what makes a Mac app read as native rather than as a web page. Inter is
+     kept as a fallback for other platforms. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
+               "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
   /* Type scale */
-  --text-xs:   11px;
-  --text-sm:   13px;
-  --text-base: 16px;
-  --text-lg:   20px;
-  --text-xl:   32px;
+  --text-xs:   12px;  /* badges, metadata */
+  --text-sm:   13px;  /* labels, sidebar rows */
+  --text-base: 14px;  /* inputs, filenames, body */
+  --text-lg:   17px;  /* section headings */
+  --text-xl:   28px;  /* empty-state display */
 
   /* Elevation */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
@@ -55,7 +62,7 @@
   --overlay:   rgba(0, 0, 0, 0.4);
 
   /* Base document */
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.5;
   font-weight: 400;
@@ -75,4 +82,75 @@
 
 body {
   margin: 0;
+}
+
+/* Form controls don't inherit type by default — without this the search field
+   and buttons fall back to the browser's own UI font. */
+input,
+textarea,
+button,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Native-feeling text selection and a sane default cursor for controls. */
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--accent-subtle);
+  color: var(--accent-on-subtle);
+}
+
+/* Motion. Durations stay short — a spinner that feels slow reads as a hang. */
+@keyframes sl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes sl-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sl-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.sl-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  animation: sl-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+.sl-popover {
+  animation: sl-fade-up 0.12s ease-out;
+}
+
+/* Respect users who've asked the OS to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  .sl-spinner,
+  .sl-popover {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { saveNotes, assignFolder } from '../lib/folders'
+import { assignFolder } from '../lib/folders'
 
 interface Folder {
   id: string
@@ -24,33 +24,21 @@ interface Props {
   onClose: () => void
   onUpdate: () => void
   onOpenFullscreen: (src: string) => void
+  onOpenNotes: () => void
 }
 
-export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, onOpenFullscreen }: Props) {
-  const [notes, setNotes] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+export function DetailPanel({
+  screenshot, folders, imageSrc, onClose, onUpdate, onOpenFullscreen, onOpenNotes,
+}: Props) {
   const [selectedFolder, setSelectedFolder] = useState<string>('')
 
   useEffect(() => {
     if (screenshot) {
-      setNotes(screenshot.notes || '')
       setSelectedFolder(screenshot.folder_id || '')
-      setSaved(false)
     }
   }, [screenshot?.id])
 
   if (!screenshot) return null
-
-  async function handleSaveNotes() {
-    if (!screenshot) return
-    setSaving(true)
-    await saveNotes(screenshot.id, notes)
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-    onUpdate()
-  }
 
   async function handleFolderChange(folderId: string) {
     if (!screenshot) return
@@ -76,10 +64,10 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 16px', borderBottom: '0.5px solid var(--border)', flexShrink: 0
       }}>
-        <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)' }}>Details</span>
+        <span style={{ fontSize: 'var(--text-base)', fontWeight: '500', color: 'var(--text-primary)' }}>Details</span>
         <button onClick={onClose} style={{
           background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: '20px', color: 'var(--text-faint)', lineHeight: 1, padding: '0'
+          fontSize: 'var(--text-lg)', color: 'var(--text-faint)', lineHeight: 1, padding: '0'
         }}>×</button>
       </div>
 
@@ -101,7 +89,7 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
             <div style={{
               position: 'absolute', bottom: '8px', right: '8px',
               background: 'rgba(0,0,0,0.4)', borderRadius: 'var(--radius-sm)',
-              padding: '3px 6px', fontSize: '11px', color: 'white'
+              padding: '3px 6px', fontSize: 'var(--text-xs)', color: 'white'
             }}>
               Click to expand
             </div>
@@ -110,28 +98,28 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
 
         {/* File */}
         <div style={{ padding: '14px 16px', borderBottom: '0.5px solid var(--surface-hover)' }}>
-          <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>File</p>
-          <p style={{ fontSize: '13px', color: 'var(--text-primary)', margin: 0, wordBreak: 'break-all', lineHeight: '1.4' }}>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>File</p>
+          <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-primary)', margin: 0, wordBreak: 'break-all', lineHeight: '1.4' }}>
             {screenshot.filename}
           </p>
         </div>
 
         {/* AI Description */}
         <div style={{ padding: '14px 16px', borderBottom: '0.5px solid var(--surface-hover)' }}>
-          <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI Description</p>
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6' }}>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI Description</p>
+          <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6' }}>
             {screenshot.description}
           </p>
         </div>
 
         {/* Folder */}
         <div style={{ padding: '14px 16px', borderBottom: '0.5px solid var(--surface-hover)' }}>
-          <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Folder</p>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Folder</p>
           <select
             value={selectedFolder}
             onChange={e => handleFolderChange(e.target.value)}
             style={{
-              width: '100%', fontSize: '13px', padding: '7px 10px',
+              width: '100%', fontSize: 'var(--text-base)', padding: '7px 10px',
               border: '0.5px solid var(--border)', borderRadius: 'var(--radius)',
               background: 'white', color: 'var(--text-primary)', cursor: 'pointer', outline: 'none'
             }}
@@ -143,42 +131,64 @@ export function DetailPanel({ screenshot, folders, imageSrc, onClose, onUpdate, 
           </select>
         </div>
 
-        {/* Notes */}
+        {/* Notes — a preview here, with the actual writing done full-screen.
+            Editing in a 300px column made the note feel like a form field
+            rather than the thing the app is for. */}
         <div style={{ padding: '14px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Notes</p>
-            {saved && <span style={{ fontSize: '11px', color: 'var(--success)' }}>Saved</span>}
-          </div>
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSaveNotes()
-            }}
-            placeholder="Add notes, context, or anything you want to remember about this screenshot..."
+          <p style={{
+            fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '0 0 8px',
+            textTransform: 'uppercase', letterSpacing: '0.06em'
+          }}>
+            Notes
+          </p>
+
+          <button
+            onClick={onOpenNotes}
             style={{
-              width: '100%', minHeight: '180px', fontSize: '13px',
-              padding: '10px', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)',
-              resize: 'vertical', fontFamily: 'system-ui', lineHeight: '1.6',
-              color: 'var(--text-primary)', boxSizing: 'border-box', outline: 'none'
+              display: 'block', width: '100%', textAlign: 'left', cursor: 'text',
+              background: 'var(--surface)', border: '0.5px solid var(--border)',
+              borderRadius: 'var(--radius)', padding: '10px',
+              minHeight: '96px', color: 'inherit'
             }}
-            onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-            onBlur={e => e.target.style.borderColor = 'var(--border)'}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-faint)' }}>⌘ + Enter to save</span>
-            <button
-              onClick={handleSaveNotes}
-              disabled={saving}
-              style={{
-                fontSize: '13px', padding: '7px 20px',
-                background: 'var(--accent)', color: 'white', border: 'none',
-                borderRadius: 'var(--radius)', cursor: 'pointer'
-              }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+          >
+            {screenshot.notes?.trim() ? (
+              <span style={{
+                display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical',
+                overflow: 'hidden', fontSize: 'var(--text-sm)', lineHeight: 1.6,
+                color: 'var(--text-primary)', whiteSpace: 'pre-wrap'
+              }}>
+                {screenshot.notes}
+              </span>
+            ) : (
+              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-faint)' }}>
+                Nothing written yet.
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={onOpenNotes}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: '6px', width: '100%', marginTop: '8px',
+              fontSize: 'var(--text-base)', padding: '8px 16px',
+              background: 'var(--accent)', color: 'white', border: 'none',
+              borderRadius: 'var(--radius)', cursor: 'pointer'
+            }}
+          >
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round"
+              aria-hidden="true"
             >
-              {saving ? 'Saving...' : 'Save notes'}
-            </button>
-          </div>
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
+            </svg>
+            {screenshot.notes?.trim() ? 'Open notes' : 'Write a note'}
+          </button>
         </div>
       </div>
     </div>

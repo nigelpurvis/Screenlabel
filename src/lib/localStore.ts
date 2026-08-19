@@ -20,6 +20,18 @@ import { appDataDir, join } from '@tauri-apps/api/path'
 // The tradeoff is that the log accumulates superseded lines, so it's compacted
 // (rewritten with only the live entries) once the dead weight outgrows the real
 // data. That's the same snapshot-plus-log design real databases use.
+//
+// A line is one of two things:
+//
+//   - a full entry, written when a screenshot is ingested or re-ingested
+//   - a patch, written when mutable metadata changes (notes, tags, folder)
+//
+// Patches exist because the embedding dominates an entry's size and never
+// changes after ingest. Appending a whole entry on every note autosave meant
+// rewriting ~31KB of unchanged floats to record a few typed characters. A patch
+// carries only the fields that actually changed, so a note save costs about a
+// kilobyte. Compaction always writes full entries, so a compacted log is a clean
+// snapshot with no patches in it.
 
 export interface IndexEntry {
   id: string
@@ -84,20 +96,48 @@ export function serializeLog(list: IndexEntry[]): string {
   return list.map((e) => JSON.stringify(e)).join('\n') + '\n'
 }
 
+// Fields a patch is allowed to change. The embedding, id, and timestamps come
+// from ingest and are only ever rewritten by a full entry.
+export type PatchableFields = Pick<IndexEntry, 'notes' | 'tags' | 'folder'>
+
+export interface LogPatch {
+  op: 'patch'
+  path: string
+  fields: Partial<PatchableFields>
+}
+
+export function serializePatch(path: string, fields: Partial<PatchableFields>): string {
+  const patch: LogPatch = { op: 'patch', path, fields }
+  return JSON.stringify(patch) + '\n'
+}
+
 // Replays the log into the live entry set: later lines win, keyed by image path.
 // A line that fails to parse (a torn write from a crash, say) is skipped rather
 // than aborting the whole load — one bad line shouldn't cost the user an index.
 export function replay(raw: string): IndexEntry[] {
   const byPath = new Map<string, IndexEntry>()
+
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue
     try {
-      const entry = JSON.parse(line) as IndexEntry
+      const record = JSON.parse(line) as IndexEntry | LogPatch
+
+      if ((record as LogPatch).op === 'patch') {
+        const patch = record as LogPatch
+        const base = byPath.get(patch.path)
+        // A patch with nothing to patch can't be reconstructed — it has no
+        // embedding — so it's dropped rather than stored as a partial entry.
+        if (base) byPath.set(patch.path, { ...base, ...patch.fields })
+        continue
+      }
+
+      const entry = record as IndexEntry
       if (entry?.path) byPath.set(entry.path, entry)
     } catch {
       continue
     }
   }
+
   return [...byPath.values()]
 }
 
@@ -132,12 +172,13 @@ async function compact(): Promise<void> {
   return writeChain
 }
 
-// Appends a single entry as one line — the hot path during ingest.
-async function appendEntry(entry: IndexEntry): Promise<void> {
+// Appends one line to the log. Both a full entry and a patch go through here so
+// the write serialization and compaction check live in one place.
+async function appendLine(line: string): Promise<void> {
   writeChain = writeChain
     .catch(() => {})
     .then(async () => {
-      await writeTextFile(logFile, JSON.stringify(entry) + '\n', { append: true })
+      await writeTextFile(logFile, line, { append: true })
       logLines++
     })
   await writeChain
@@ -156,21 +197,24 @@ export function getEntryByPath(path: string): IndexEntry | undefined {
   return entries.find((e) => e.path === path)
 }
 
+// Ingest writes a full entry, since the embedding is new or has been recomputed.
 export async function upsertEntry(entry: IndexEntry): Promise<void> {
   const i = entries.findIndex((e) => e.path === entry.path)
   if (i >= 0) entries[i] = entry
   else entries.push(entry)
-  await appendEntry(entry)
+  await appendLine(JSON.stringify(entry) + '\n')
 }
 
+// Metadata edits write a patch — the embedding is untouched, so there's no
+// reason to pay for it on every autosave.
 export async function updateEntry(
   id: string,
-  patch: Partial<IndexEntry>,
+  patch: Partial<PatchableFields>,
 ): Promise<IndexEntry | undefined> {
   const entry = getEntry(id)
   if (!entry) return undefined
   Object.assign(entry, patch)
-  await appendEntry(entry)
+  await appendLine(serializePatch(entry.path, patch))
   return entry
 }
 

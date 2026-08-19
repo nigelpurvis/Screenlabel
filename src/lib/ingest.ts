@@ -1,18 +1,7 @@
-import { readFile } from '@tauri-apps/plugin-fs'
+import { invoke } from '@tauri-apps/api/core'
 import { getProvider } from './ai'
 import * as store from './localStore'
 import { readSidecar, writeSidecar } from './vault'
-
-// Convert raw image bytes to base64 in chunks. Doing it in one
-// String.fromCharCode(...bytes) call overflows the call stack on large files.
-function toBase64(bytes: Uint8Array): string {
-  let binary = ''
-  const chunkSize = 8192
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.slice(i, i + chunkSize))
-  }
-  return btoa(binary)
-}
 
 // Pipeline: image bytes -> base64 -> GPT-4o (describe + extract text) ->
 // embedding -> write sidecar .md + upsert into the local index.
@@ -32,8 +21,9 @@ export async function ingestScreenshot(filePath: string) {
     description = fm.description
     text = typeof fm.text === 'string' ? fm.text : ''
   } else {
-    const bytes = await readFile(filePath)
-    const base64 = toBase64(bytes)
+    // Read and encode on the Rust side, so the image bytes never enter the
+    // webview and the encoding never runs on the UI thread.
+    const base64 = await invoke<string>('image_base64', { path: filePath })
     const result = await ai.describe(base64)
     description = result.description
     text = result.text

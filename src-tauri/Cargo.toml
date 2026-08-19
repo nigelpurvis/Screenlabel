@@ -30,5 +30,8 @@ tauri-plugin-dialog = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 # Thumbnail decoding/downscaling. Only the formats we actually ingest.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Encoding images for the vision API, done here so multi-megabyte buffers never
+# cross into JS and never run on the UI thread.
+base64 = "0.22"
 
 [workspace]

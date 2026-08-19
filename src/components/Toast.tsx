@@ -40,11 +40,11 @@ export function Toast({ message, subtitle, actions, onDismiss, duration = 8000 }
 
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
         <div style={{ flex: 1 }}>
-          <p style={{ margin: '0 0 2px', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)' }}>
+          <p style={{ margin: '0 0 2px', fontSize: 'var(--text-base)', fontWeight: '500', color: 'var(--text-primary)' }}>
             {message}
           </p>
           {subtitle && (
-            <p style={{ margin: '0 0 10px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+            <p style={{ margin: '0 0 10px', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
               {subtitle}
             </p>
           )}
@@ -52,7 +52,7 @@ export function Toast({ message, subtitle, actions, onDismiss, duration = 8000 }
             <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
               {actions.map((a, i) => (
                 <button key={i} onClick={a.onClick} style={{
-                  fontSize: '12px', padding: '5px 12px',
+                  fontSize: 'var(--text-sm)', padding: '5px 12px',
                   borderRadius: 'var(--radius-sm)', cursor: 'pointer', border: 'none',
                   background: a.primary ? 'var(--accent)' : 'var(--surface-hover)',
                   color: a.primary ? 'white' : 'var(--text-primary)',
@@ -66,7 +66,7 @@ export function Toast({ message, subtitle, actions, onDismiss, duration = 8000 }
         </div>
         <button onClick={onDismiss} style={{
           background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: '16px', color: 'var(--text-faint)', padding: '0', lineHeight: 1, flexShrink: 0
+          fontSize: 'var(--text-lg)', color: 'var(--text-faint)', padding: '0', lineHeight: 1, flexShrink: 0
         }}>×</button>
       </div>
     </div>

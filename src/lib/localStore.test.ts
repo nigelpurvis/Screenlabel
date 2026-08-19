@@ -16,7 +16,8 @@ vi.mock('@tauri-apps/api/path', () => ({
   join: vi.fn(),
 }))
 
-const { replay, serializeLog, countLines, shouldCompact, cosine } = await import('./localStore')
+const { replay, serializeLog, serializePatch, countLines, shouldCompact, cosine } =
+  await import('./localStore')
 
 type Entry = Parameters<typeof serializeLog>[0][number]
 
@@ -72,6 +73,79 @@ describe('replay', () => {
 
   it('returns nothing for an empty log', () => {
     expect(replay('')).toEqual([])
+  })
+})
+
+describe('patch records', () => {
+  it('applies a patch on top of the entry it follows', () => {
+    const log =
+      JSON.stringify(entry('/a.png', { notes: 'first draft' })) +
+      '\n' +
+      serializePatch('/a.png', { notes: 'revised' })
+
+    const [result] = replay(log)
+    expect(result.notes).toBe('revised')
+  })
+
+  it('leaves fields the patch does not mention alone', () => {
+    // The whole point: a note edit must not disturb the embedding.
+    const base = entry('/a.png', { tags: ['keep'], embedding: [0.5, 0.25, 0.125] })
+    const log = JSON.stringify(base) + '\n' + serializePatch('/a.png', { notes: 'added' })
+
+    const [result] = replay(log)
+    expect(result.embedding).toEqual([0.5, 0.25, 0.125])
+    expect(result.tags).toEqual(['keep'])
+    expect(result.notes).toBe('added')
+  })
+
+  it('applies patches in order, last one winning', () => {
+    const log =
+      JSON.stringify(entry('/a.png')) +
+      '\n' +
+      serializePatch('/a.png', { notes: 'one' }) +
+      serializePatch('/a.png', { notes: 'two' }) +
+      serializePatch('/a.png', { notes: 'three' })
+
+    expect(replay(log)[0].notes).toBe('three')
+  })
+
+  it('does not confuse patches for different paths', () => {
+    const log =
+      JSON.stringify(entry('/a.png')) +
+      '\n' +
+      JSON.stringify(entry('/b.png')) +
+      '\n' +
+      serializePatch('/b.png', { folder: 'Co-op' })
+
+    const entries = replay(log)
+    expect(entries.find((e) => e.path === '/a.png')?.folder).toBeNull()
+    expect(entries.find((e) => e.path === '/b.png')?.folder).toBe('Co-op')
+  })
+
+  it('drops an orphan patch rather than storing a partial entry', () => {
+    // Without a base there's no embedding, so the record is unusable. It must
+    // not end up in the index as a half-built entry.
+    const log = serializePatch('/gone.png', { notes: 'orphan' })
+    expect(replay(log)).toEqual([])
+  })
+
+  it('is superseded by a later full entry', () => {
+    // Re-ingesting recomputes the embedding, so the full entry wins outright.
+    const log =
+      JSON.stringify(entry('/a.png', { notes: 'old' })) +
+      '\n' +
+      serializePatch('/a.png', { notes: 'patched' }) +
+      JSON.stringify(entry('/a.png', { notes: 'reingested' })) +
+      '\n'
+
+    expect(replay(log)[0].notes).toBe('reingested')
+  })
+
+  it('costs far less than a full entry', () => {
+    // The reason this exists: a note save used to rewrite the whole embedding.
+    const full = JSON.stringify(entry('/a.png', { embedding: Array(1536).fill(0.123456) }))
+    const patch = serializePatch('/a.png', { notes: 'a short note' })
+    expect(patch.length).toBeLessThan(full.length / 20)
   })
 })
 
